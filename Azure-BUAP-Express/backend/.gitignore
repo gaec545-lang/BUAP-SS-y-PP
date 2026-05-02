@@ -1,0 +1,29 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# SQLite database
+*.db
+buap_ss_pp.db
+
+# macOS / OS X metadata
+.DS_Store
+._*
+
+# VS Code
+.vscode/
+
+# Ignore uploads / generated files locally
+uploads/
+generated_pdfs/
+scratch/
