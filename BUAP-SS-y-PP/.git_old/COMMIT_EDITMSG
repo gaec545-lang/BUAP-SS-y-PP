@@ -1,0 +1,22 @@
+Fix: Excel career parsing, config endpoint, enrollment approval, program folio search
+
+Backend:
+- Excel upload: regex \(([A-Z]+)\) para parsear correctamente las 7 carreras
+- GET /admin/me: nuevo endpoint para recuperar sesion al refrescar
+- GET /admin/audit-log: historial de uploads
+- GET /student/programs/by-folio: busqueda directa por folio sin filtro de carrera
+- GET /admin/enrollments/{id}: detalle de inscripcion
+- Approve enrollment: fix OpsStudentEnrollment + try/except
+- Config endpoint: aliases key/value en respuesta
+- openpyxl en requirements.txt
+
+Frontend:
+- api.ts: URLs corregidas (available-programs, select-program, config/{key})
+- api.ts: SERVICE_TYPE_MAP ss->servicio_social, pp->practica_profesional
+- ProgramSelector: busqueda directa por folio via getProgramByFolio()
+- AdminConfigPage: rediseno 3 cards + filtro de carreras dinamico
+- AdminLayout: renombrar sidebar a Configuracion del periodo
+- StudentContext: restaurar sesion de admin desde localStorage
+- ErrorBoundary: nuevo componente
+
+Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
