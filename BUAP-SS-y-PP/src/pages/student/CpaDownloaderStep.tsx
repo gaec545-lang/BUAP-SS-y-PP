@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { getInterests, generateDocument, updateInterest, type InterestAPI } from '../../services/api'
-import { FileText, Download, ChevronRight } from 'lucide-react'
+import { FileText, Download, ChevronRight, AlertTriangle } from 'lucide-react'
 
 export function CpaDownloaderStep({ processCode, stepNumber, onComplete }: { processCode: string, stepNumber: number, onComplete: () => void }) {
   const [interests, setInterests] = useState<InterestAPI[]>([])
@@ -55,6 +55,13 @@ export function CpaDownloaderStep({ processCode, stepNumber, onComplete }: { pro
           <FileText className="text-amber-600 flex-shrink-0" size={20} />
           <p className="text-sm text-amber-800">
             Para cada dependencia, indica el nombre y cargo de la persona que firmará la carta (ej. Dr. Juan Pérez - Director General). Si lo dejas en blanco responderá "A quien corresponda".
+          </p>
+        </div>
+
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex gap-3">
+          <AlertTriangle className="text-red-600 flex-shrink-0" size={20} />
+          <p className="text-sm font-bold text-red-800">
+            ⚠️ Atención: Solo puedes generar 1 Carta de Presentación (CPA) a la semana. Revisa muy bien a quién va dirigida antes de descargarla.
           </p>
         </div>
         

@@ -35,6 +35,7 @@ async function checkStatus(res: Response): Promise<Response> {
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
+    'X-Evangelista-Secure': '1',
     ...((options.headers as Record<string, string>) ?? {}),
   }
   if (_token) {
@@ -316,7 +317,9 @@ export async function generateDocument(
   addressedTo?: string,
   programFolio?: string
 ): Promise<void> {
-  const headers: Record<string, string> = {}
+  const headers: Record<string, string> = {
+    'X-Evangelista-Secure': '1'
+  }
   if (_token) headers['Authorization'] = `Bearer ${_token}`
 
   const query = new URLSearchParams({ process_code: processCode, step_number: String(stepNumber) })
