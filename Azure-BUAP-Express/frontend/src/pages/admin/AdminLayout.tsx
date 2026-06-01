@@ -10,6 +10,7 @@ import {
   FileCheck,
   Settings,
   BookOpen,
+  Terminal,
 } from 'lucide-react'
 import { useStudent } from '../../context/StudentContext'
 import { BuapLogo } from '../../components/BuapLogo'
@@ -117,6 +118,14 @@ export function AdminLayout({ children }: AdminLayoutProps) {
           >
             <ArrowLeft size={12} />
             Volver al portal
+          </NavLink>
+          <NavLink
+            to="/admin/developer"
+            className="flex items-center gap-2 text-xs text-content-tertiary hover:text-emerald-500
+                       transition-colors duration-150"
+          >
+            <Terminal size={12} />
+            Terminal Dev
           </NavLink>
 
           {admin && (

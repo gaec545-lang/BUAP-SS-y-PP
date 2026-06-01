@@ -322,6 +322,9 @@ function CurrentStepCard({
               {genError && (
                 <p className="mt-1.5 text-xs text-danger">{genError}</p>
               )}
+              <p className="mt-2 text-xs font-bold text-red-600 bg-red-50 p-2 rounded border border-red-200">
+                ⚠️ Atención: Solo puedes generar 1 documento de este tipo a la semana. Revisa que toda la información sea correcta antes de descargarlo.
+              </p>
               <p className="mt-2 text-xs text-content-tertiary">
                 Descarga este documento, imprímelo y llévalo con firma en tinta azul
                 y sello a la CPPC.

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
-import { getInterests, generateDocument, updateInterest, type InterestAPI } from '../../services/api'
-import { FileText, Download, ChevronRight } from 'lucide-react'
+import { getInterests, generateDocument, type InterestAPI } from '../../services/api'
+
+import { FileText, Download, ChevronRight, AlertTriangle } from 'lucide-react'
 
 export function CpaDownloaderStep({ processCode, stepNumber, onComplete }: { processCode: string, stepNumber: number, onComplete: () => void }) {
   const [interests, setInterests] = useState<InterestAPI[]>([])
@@ -54,32 +55,62 @@ export function CpaDownloaderStep({ processCode, stepNumber, onComplete }: { pro
         <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 flex gap-3">
           <FileText className="text-amber-600 flex-shrink-0" size={20} />
           <p className="text-sm text-amber-800">
-            Para cada dependencia, indica el nombre y cargo de la persona que firmará la carta (ej. Dr. Juan Pérez - Director General). Si lo dejas en blanco responderá "A quien corresponda".
+            Descarga tu Carta de Presentación (CPA). Los datos del responsable se llenarán automáticamente si están registrados; de lo contrario, podrás ingresarlos manualmente abajo.
+          </p>
+        </div>
+
+
+
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex gap-3">
+          <AlertTriangle className="text-red-600 flex-shrink-0" size={20} />
+          <p className="text-sm font-bold text-red-800">
+            ⚠️ Atención: Solo puedes generar 1 Carta de Presentación (CPA) a la semana. Revisa muy bien a quién va dirigida antes de descargarla.
           </p>
         </div>
         
-        {interests.map(i => (
-          <div key={i.id} className="bg-gray-50 border border-gray-200 p-4 rounded-xl flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center">
-             <div className="flex-1 w-full">
-               <span className="font-bold text-sm text-gray-800 block mb-1">{i.folio} - {i.dependency_name}</span>
-               <input 
-                  type="text" 
-                  value={addresses[i.id] || ''}
-                  onChange={e => setAddresses(prev => ({...prev, [i.id]: e.target.value}))}
-                  onBlur={e => updateInterest(i.id, undefined, e.target.value)}
-                  placeholder="Nombre y cargo a quien se dirige"
-                  className="w-full text-sm border border-gray-300 rounded-md px-3 py-1.5 focus:ring-1 focus:ring-blue-500"
-               />
+        {interests.map(i => {
+          const needsManualInput = !i.responsible_name || !i.responsible_position;
+          return (
+            <div key={i.id} className="bg-gray-50 border border-gray-200 p-4 rounded-xl flex flex-col gap-4">
+              <div className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center">
+                 <div className="flex-1 w-full">
+                   <span className="font-bold text-sm text-gray-800 block">{i.folio} - {i.dependency_name}</span>
+                   <span className="text-xs text-gray-500">{i.program_name}</span>
+                   {!needsManualInput && (
+                     <div className="mt-2 p-2 bg-green-50 border border-green-100 rounded text-[11px] text-green-700">
+                       <strong>Responsable detectado:</strong> {i.responsible_name} ({i.responsible_position})
+                     </div>
+                   )}
+                </div>
+
+                <button 
+                   onClick={() => handleDownload(i)}
+                   disabled={downloading[i.id]}
+                   className="flex-shrink-0 flex items-center gap-2 bg-white border border-gray-300 shadow-sm text-gray-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-50 transition min-w-[120px] justify-center"
+                >
+                   {downloading[i.id] ? 'Generando...' : <><Download size={16}/> Descargar CPA</>}
+                </button>
+              </div>
+              
+              {needsManualInput && (
+                <div className="border-t border-gray-200 pt-3 mt-1">
+                  <p className="text-[11px] text-amber-600 font-medium mb-2 flex items-center gap-1">
+                    <AlertTriangle size={12} /> No encontramos los datos del responsable para este folio. Por favor ingrésalos manualmente:
+                  </p>
+                  <input 
+                    type="text" 
+                    value={addresses[i.id] || ''}
+                    onChange={e => setAddresses(prev => ({...prev, [i.id]: e.target.value}))}
+                    placeholder="Nombre y cargo (ej. Dr. Juan Pérez - Director)"
+                    className="w-full text-sm border border-gray-300 rounded-md px-3 py-2 focus:ring-1 focus:ring-blue-500 bg-white"
+                  />
+                </div>
+              )}
             </div>
-            <button 
-               onClick={() => handleDownload(i)}
-               disabled={downloading[i.id]}
-               className="flex-shrink-0 flex items-center gap-2 bg-white border border-gray-300 shadow-sm text-gray-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-50 transition min-w-[120px] justify-center"
-            >
-               {downloading[i.id] ? 'Generando...' : <><Download size={16}/> Descargar CPA</>}
-            </button>
-          </div>
-        ))}
+          )
+        })}
+
+
       </div>
 
       <div className="pt-4 border-t border-gray-100 flex justify-end">

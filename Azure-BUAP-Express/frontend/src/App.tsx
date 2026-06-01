@@ -15,6 +15,7 @@ import { AdminSolicitudesPage } from './pages/admin/AdminSolicitudesPage'
 import { AdminConfigPage } from './pages/admin/AdminConfigPage'
 import { AdminUsersPage } from './pages/admin/AdminUsersPage'
 import { AdminProgramsPage } from './pages/admin/AdminProgramsPage'
+import { DeveloperPanel } from './pages/admin/DeveloperPanel'
 
 import type { ReactNode } from 'react'
 
@@ -77,6 +78,7 @@ function AppRoutes() {
       <Route path="/admin/programs" element={<ProtectedAdmin><AdminProgramsPage /></ProtectedAdmin>} />
       <Route path="/admin/config" element={<ProtectedAdmin><AdminConfigPage /></ProtectedAdmin>} />
       <Route path="/admin/users" element={<ProtectedAdmin><AdminUsersPage /></ProtectedAdmin>} />
+      <Route path="/admin/developer" element={<ProtectedAdmin><DeveloperPanel /></ProtectedAdmin>} />
 
       {/* Legacy admin redirects */}
       <Route path="/admin/registrations" element={<Navigate to="/admin/solicitudes" replace />} />

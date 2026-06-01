@@ -1,6 +1,16 @@
+import axios from 'axios'
 import { FRONTEND_PROCESS_MAP } from '../data/processes'
 
-const BASE = 'https://app-buap-backend.azurewebsites.net/api'
+const API_URL = (import.meta.env.VITE_API_URL || "https://app-buap-backend-axgrbkabgsh2h6g8.mexicocentral-01.azurewebsites.net").replace(/\/api\/?$/, '') + '/api';
+
+// Axios instance
+export const api = axios.create({
+  baseURL: API_URL.endsWith('/') ? API_URL : `${API_URL}/`,
+  headers: {
+    'Content-Type': 'application/json',
+    'X-Evangelista-Secure': '1'
+  }
+});
 
 // Token management — stored in localStorage
 let _token: string | null = localStorage.getItem('buap_token')
@@ -15,34 +25,49 @@ export function getToken(): string | null {
   return _token
 }
 
-async function checkStatus(res: Response): Promise<Response> {
-  if (res.status === 401) {
-    setToken(null)
-    window.location.href = '/' // Force redirect to login
-    throw new Error('Sesión expirada. Por favor, inicia sesión de nuevo.')
-  }
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: res.statusText }))
-    const message = typeof err.detail === 'string' ? err.detail : 'Error en la solicitud'
-    const error = new Error(message) as Error & { status: number; data: unknown }
-    error.status = res.status
-    error.data = err
-    throw error
-  }
-  return res
-}
-
-async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    ...((options.headers as Record<string, string>) ?? {}),
-  }
+// Request Interceptor: Inject Token
+api.interceptors.request.use((config) => {
   if (_token) {
-    headers['Authorization'] = `Bearer ${_token}`
+    config.headers.Authorization = `Bearer ${_token}`
   }
-  const res = await fetch(`${BASE}${path}`, { ...options, headers })
-  await checkStatus(res)
-  return res.json()
+  return config
+})
+
+// Response Interceptor: Handle 401 and Errors
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      setToken(null)
+      window.location.href = '/'
+      return Promise.reject(new Error('Sesión expirada. Por favor, inicia sesión de nuevo.'))
+    }
+    const detail = error.response?.data?.detail || error.message || 'Error en la solicitud'
+    return Promise.reject(new Error(typeof detail === 'string' ? detail : 'Error en la solicitud'))
+  }
+)
+
+async function request<T>(path: string, options: any = {}): Promise<T> {
+  const method = (options.method || 'GET').toLowerCase()
+  
+  // If body is already a string, we might need to parse it for axios, 
+  // but axios also accepts objects. Let's be flexible.
+  let data = options.body
+  if (typeof data === 'string') {
+    try {
+      data = JSON.parse(data)
+    } catch (e) {
+      // Keep as string if not valid JSON
+    }
+  }
+
+  const res = await api.request({
+    url: path,
+    method,
+    data,
+    headers: options.headers
+  })
+  return res.data
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -166,7 +191,7 @@ export async function registerStudent(data: {
   modality_code: string
   study_plan: string
 }): Promise<{ token: string; student: StudentAPI }> {
-  return request('/auth/register', { method: 'POST', body: JSON.stringify(data) })
+  return request('auth/register', { method: 'POST', body: JSON.stringify(data) })
 }
 
 export async function loginStudent(email: string): Promise<{
@@ -174,14 +199,14 @@ export async function loginStudent(email: string): Promise<{
   student: StudentAPI
   enrollment_status: string
 }> {
-  return request('/auth/student-login', { method: 'POST', body: JSON.stringify({ email }) })
+  return request('auth/student-login', { method: 'POST', body: JSON.stringify({ email }) })
 }
 
 export async function loginAdmin(username: string, password: string): Promise<{
   token: string
   admin: AdminAPI
 }> {
-  return request('/auth/admin-login', { method: 'POST', body: JSON.stringify({ username, password }) })
+  return request('auth/admin-login', { method: 'POST', body: JSON.stringify({ username, password }) })
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -189,11 +214,11 @@ export async function loginAdmin(username: string, password: string): Promise<{
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function getMe(): Promise<StudentAPI> {
-  return request('/student/me')
+  return request('student/me')
 }
 
 export async function getEnrollmentStatus(): Promise<EnrollmentStatusAPI> {
-  return request('/student/enrollment-status')
+  return request('student/enrollment-status')
 }
 
 // Map frontend shortcodes to backend enum values
@@ -204,23 +229,23 @@ const SERVICE_TYPE_MAP: Record<string, string> = {
 
 export async function getAvailablePrograms(serviceType: string): Promise<any[]> {
   const backendType = SERVICE_TYPE_MAP[serviceType] ?? serviceType
-  return request(`/student/available-programs?service_type=${encodeURIComponent(backendType)}`)
+  return request(`student/available-programs?service_type=${encodeURIComponent(backendType)}`)
 }
 
 export async function getProgramByFolio(folio: string): Promise<any> {
-  return request(`/student/programs/by-folio?folio=${encodeURIComponent(folio.trim())}`)
+  return request(`student/programs/by-folio?folio=${encodeURIComponent(folio.trim())}`)
 }
 
 export async function selectProgram(serviceType: string, folio: string): Promise<any> {
   const backendType = SERVICE_TYPE_MAP[serviceType] ?? serviceType
-  return request('/student/select-program', {
+  return request('student/select-program', {
     method: 'POST',
     body: JSON.stringify({ service_type: backendType, folio }),
   })
 }
 
 export async function getProcesses(): Promise<ProcessAPI[]> {
-  return request('/student/processes')
+  return request('student/processes')
 }
 
 export function advanceFrontendStep(processCode: string, targetStepNumber: number) {
@@ -245,7 +270,7 @@ export async function getProcessSteps(processCode: string): Promise<{
 }> {
   let result: any = null
   try {
-    result = await request(`/student/process/${processCode}/steps`)
+    result = await request(`student/process/${processCode}/steps`)
   } catch (err) {
     // Si el backend no tiene este proceso (ej. exencion), creamos un estado base temporal
     result = {
@@ -302,7 +327,7 @@ export async function submitChangeRequest(data: {
   justification: string
   new_program_folio?: string
 }): Promise<any> {
-  return request('/student/change-request', { method: 'POST', body: JSON.stringify(data) })
+  return request('student/change-request', { method: 'POST', body: JSON.stringify(data) })
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -321,9 +346,6 @@ export async function generateDocument(
   month?: string,
   responsible_position?: string
 ): Promise<void> {
-  const headers: Record<string, string> = {}
-  if (_token) headers['Authorization'] = `Bearer ${_token}`
-
   const query = new URLSearchParams({ process_code: processCode, step_number: String(stepNumber) })
   if (addressedTo) query.append('addressed_to', addressedTo)
   if (programFolio) query.append('program_folio', programFolio)
@@ -333,13 +355,11 @@ export async function generateDocument(
   if (month) query.append('month', month)
   if (responsible_position) query.append('responsible_position', responsible_position)
 
-  const res = await fetch(`${BASE}/documents/generate/${documentTypeCode}?${query.toString()}`, {
-    method: 'POST',
-    headers,
+  const res = await api.post(`documents/generate/${documentTypeCode}?${query.toString()}`, null, {
+    responseType: 'blob'
   })
-  await checkStatus(res)
 
-  const blob = await res.blob()
+  const blob = res.data
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
@@ -360,9 +380,6 @@ export async function submitUpload(
   processCode: string,
   stepNumber: number,
 ): Promise<any> {
-  const headers: Record<string, string> = {}
-  if (_token) headers['Authorization'] = `Bearer ${_token}`
-
   const formData = new FormData()
   formData.append('file', file)
   formData.append('document_type_code', documentTypeCode)
@@ -370,13 +387,14 @@ export async function submitUpload(
   formData.append('process_code', processCode)
   formData.append('step_number', String(stepNumber))
 
-  const res = await fetch(`${BASE}/uploads/submit`, { method: 'POST', headers, body: formData })
-  await checkStatus(res)
-  return res.json()
+  const res = await api.post('uploads/submit', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  })
+  return res.data
 }
 
 export async function getMyUploads(): Promise<any[]> {
-  return request('/uploads/my-uploads')
+  return request('uploads/my-uploads')
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -384,11 +402,11 @@ export async function getMyUploads(): Promise<any[]> {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function adminGetMe(): Promise<AdminAPI> {
-  return request('/admin/me')
+  return request('admin/me')
 }
 
 export async function adminGetDashboardStats(): Promise<any> {
-  return request('/admin/dashboard-stats')
+  return request('admin/dashboard-stats')
 }
 
 export async function adminGetStudents(params?: {
@@ -401,11 +419,11 @@ export async function adminGetStudents(params?: {
   if (params?.modality_code) qs.set('modality_code', params.modality_code)
   if (params?.service_type) qs.set('service_type', params.service_type)
   const query = qs.toString()
-  return request(`/admin/students${query ? `?${query}` : ''}`)
+  return request(`admin/students${query ? `?${query}` : ''}`)
 }
 
 export async function adminGetStudent(id: number): Promise<any> {
-  return request(`/admin/students/${id}`)
+  return request(`admin/students/${id}`)
 }
 
 export async function adminAdvanceStep(
@@ -413,69 +431,68 @@ export async function adminAdvanceStep(
   processCode: string,
   notes?: string,
 ): Promise<any> {
-  return request(`/admin/students/${studentId}/advance`, {
+  return request(`admin/students/${studentId}/advance`, {
     method: 'POST',
     body: JSON.stringify({ process_code: processCode, notes }),
   })
 }
 
 export async function adminGetPendingUploads(): Promise<any[]> {
-  return request('/uploads/pending')
+  return request('uploads/pending')
 }
 
 export async function adminApproveUpload(uploadId: number): Promise<any> {
-  return request(`/uploads/${uploadId}/approve`, { method: 'POST' })
+  return request(`uploads/${uploadId}/approve`, { method: 'POST' })
 }
 
 export async function adminRejectUpload(uploadId: number, reason: string): Promise<any> {
-  return request(`/uploads/${uploadId}/reject`, {
+  return request(`uploads/${uploadId}/reject`, {
     method: 'POST',
     body: JSON.stringify({ reason }),
   })
 }
 
 export async function openUploadFile(uploadId: number): Promise<void> {
-  const headers: Record<string, string> = {}
-  if (_token) headers['Authorization'] = `Bearer ${_token}`
-  const res = await fetch(`${BASE}/uploads/${uploadId}/file`, { headers })
-  await checkStatus(res)
-  const blob = await res.blob()
+  const res = await api.get(`uploads/${uploadId}/file`, {
+    responseType: 'blob'
+  })
+  const blob = res.data
   const url = URL.createObjectURL(blob)
   window.open(url, '_blank')
 }
 
 export async function adminGetPendingEnrollments(): Promise<any[]> {
-  return request('/admin/enrollments/pending')
+  return request('admin/enrollments/pending')
 }
 
 export async function adminApproveEnrollment(id: number): Promise<any> {
-  return request(`/admin/enrollments/${id}/approve`, { method: 'POST' })
+  return request(`admin/enrollments/${id}/approve`, { method: 'POST' })
 }
 
 export async function adminRejectEnrollment(id: number, reason: string): Promise<any> {
-  return request(`/admin/enrollments/${id}/reject`, {
+  return request(`admin/enrollments/${id}/reject`, {
     method: 'POST',
     body: JSON.stringify({ reason }),
   })
 }
 
 export async function adminGetPendingChangeRequests(): Promise<any[]> {
-  return request('/admin/change-requests/pending')
+  return request('admin/change-requests/pending')
 }
 
 export async function adminApproveChangeRequest(id: number): Promise<any> {
-  return request(`/admin/change-requests/${id}/approve`, { method: 'POST' })
+  return request(`admin/change-requests/${id}/approve`, { method: 'POST' })
 }
 
 export async function adminRejectChangeRequest(id: number, reason: string): Promise<any> {
-  return request(`/admin/change-requests/${id}/reject`, {
+  return request(`admin/change-requests/${id}/reject`, {
     method: 'POST',
     body: JSON.stringify({ reason }),
   })
 }
 
 export async function adminGetConfig(): Promise<any[]> {
-  return request('/admin/process-config/types')
+  return request('admin/config')
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -494,29 +511,32 @@ export interface InterestAPI {
   used_slots: number
   interested_count: number
   addressed_to?: string
+  responsible_name?: string
+  responsible_position?: string
 }
 
+
 export async function addInterest(folio: string): Promise<any> {
-  return request('/student/interests', { method: 'POST', body: JSON.stringify({ folio }) })
+  return request('student/interests', { method: 'POST', body: JSON.stringify({ folio }) })
 }
 
 export async function getInterests(): Promise<InterestAPI[]> {
-  return request('/student/interests')
+  return request('student/interests')
 }
 
 export async function updateInterest(id: number, status?: string, addressedTo?: string): Promise<any> {
-  return request(`/student/interests/${id}`, {
+  return request(`student/interests/${id}`, {
     method: 'PATCH',
     body: JSON.stringify({ status, addressed_to: addressedTo })
   })
 }
 
 export async function removeInterest(id: number): Promise<any> {
-  return request(`/student/interests/${id}`, { method: 'DELETE' })
+  return request(`student/interests/${id}`, { method: 'DELETE' })
 }
 
 export async function adminUpdateConfig(key: string, value: string): Promise<any> {
-  return request(`/admin/config/${encodeURIComponent(key)}`, {
+  return request(`admin/config/${encodeURIComponent(key)}`, {
     method: 'PUT',
     body: JSON.stringify({ value }),
   })
@@ -527,60 +547,130 @@ export async function adminGetAuditLog(params?: {
   limit?: number
 }): Promise<any[]> {
   const qs = params ? `?${new URLSearchParams(Object.entries(params).filter(([, v]) => v !== undefined).map(([k, v]) => [k, String(v)])).toString()}` : ''
-  return request(`/admin/audit-log${qs}`)
+  return request(`admin/audit-log${qs}`)
 }
 
 export async function adminGetPeriods(): Promise<any[]> {
-  return request('/admin/periods')
+  return request('admin/periods')
 }
 
 export async function adminGetPrograms(params?: any): Promise<any[]> {
   const qs = params ? `?${new URLSearchParams(params).toString()}` : ''
-  return request(`/admin/programs${qs}`)
+  return request(`admin/programs${qs}`)
 }
 
 export async function adminGetProgramStats(): Promise<any> {
-  return request('/admin/programs/stats')
+  return request('admin/programs/stats')
 }
 
 export async function adminGetCareers(): Promise<any[]> {
-  return request('/admin/careers')
+  return request('admin/careers')
 }
 
 export async function adminGetUsers(): Promise<any[]> {
-  return request('/admin/users')
+  return request('admin/users')
 }
 
 export async function adminCreateUser(data: any): Promise<any> {
-  return request('/admin/users', { method: 'POST', body: JSON.stringify(data) })
+  return request('admin/users', { method: 'POST', body: JSON.stringify(data) })
 }
 
 export async function adminUpdateUser(id: number, data: any): Promise<any> {
-  return request(`/admin/users/${id}`, { method: 'PUT', body: JSON.stringify(data) })
+  return request(`admin/users/${id}`, { method: 'PUT', body: JSON.stringify(data) })
 }
 
 export async function adminUploadPrograms(file: File): Promise<any> {
-  const headers: Record<string, string> = {}
-  if (_token) headers['Authorization'] = `Bearer ${_token}`
-
   const formData = new FormData()
   formData.append('file', file)
 
-  const res = await fetch(`${BASE}/admin/programs/upload-excel`, {
-    method: 'POST',
-    headers,
-    body: formData,
+  console.log('--- Iniciando carga de Excel ---')
+  // 1. Post the file — returns immediately with a job_id
+  const res = await api.post('admin/programs/upload-excel', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
   })
-  await checkStatus(res)
-  return res.json()
+  
+  console.log('Respuesta del servidor (POST):', res.data)
+  const job_id = res.data?.job_id
+  
+  if (!job_id) {
+    console.error('ERROR: No se recibió job_id. Estructura de res.data:', res.data)
+    throw new Error('No se recibió job_id del servidor.')
+  }
+
+  console.log(`Job ID recibido: ${job_id}. Iniciando polling cada 3s...`)
+
+  // 2. Poll for completion every 3 seconds (max 10 minutes)
+  const MAX_POLLS = 200  // 200 * 3s = 600s max
+  for (let i = 0; i < MAX_POLLS; i++) {
+    await new Promise(r => setTimeout(r, 3000))
+    
+    try {
+      const statusRes = await api.get(`admin/programs/upload-status/${job_id}`)
+      console.log(`Polling [${i}]:`, statusRes.data)
+      
+      const { status, result } = statusRes.data
+      if (status === 'done') {
+        console.log('Procesamiento completado con éxito.')
+        return result
+      }
+      if (status === 'error') {
+        console.error('Error reportado por el backend:', result)
+        throw new Error(result?.detail || 'Error en el procesamiento del Excel.')
+      }
+    } catch (pollError: any) {
+      console.warn('Error en polling (reintentando...):', pollError.message)
+      // Si el error es 404, el backend podría haber perdido el job (si no es persistente)
+      // Pero ahora es persistente en DB, así que no debería pasar.
+    }
+  }
+  throw new Error('El procesamiento tardó demasiado. Refresca la página y revisa si los programas fueron cargados.')
 }
+
+export async function adminUploadProgramsPdf(files: File | File[]): Promise<any> {
+  const fileList = Array.isArray(files) ? files : [files]
+  const formData = new FormData()
+  fileList.forEach(file => {
+    formData.append('files', file)
+  })
+
+  console.log('--- Iniciando carga masiva de PDFs ---')
+  const res = await api.post('admin/programs/upload-pdf', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  })
+  
+  const job_id = res.data?.job_id
+  if (!job_id) {
+    throw new Error('No se recibió job_id del servidor para el PDF.')
+  }
+
+  console.log(`Job PDF ID: ${job_id}. Iniciando polling...`)
+
+  const MAX_POLLS = 100
+  for (let i = 0; i < MAX_POLLS; i++) {
+    await new Promise(r => setTimeout(r, 2000))
+    
+    const statusRes = await api.get(`admin/programs/upload-status/${job_id}`)
+    const { status, result } = statusRes.data
+    
+    if (status === 'done') {
+      return result
+    }
+    if (status === 'error') {
+      throw new Error(result?.detail || 'Error en el procesamiento de los PDFs.')
+    }
+  }
+  throw new Error('El procesamiento de PDFs tardó demasiado.')
+}
+
+
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Messages
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function getMyMessages(): Promise<MessageAPI[]> {
-  return request('/messages/')
+  return request('messages/my-messages')
 }
 
 export async function sendMessage(
@@ -588,19 +678,19 @@ export async function sendMessage(
   stepNumber: number,
   message: string,
 ): Promise<any> {
-  return request('/messages/', {
+  return request('messages/send', {
     method: 'POST',
     body: JSON.stringify({ process_code: processCode, step_number: stepNumber, message }),
   })
 }
 
 export async function getUnreadMessageCount(): Promise<number> {
-  const data = await request<{ count: number }>('/messages/unread-count')
-  return data.count
+  const data = await request<{ unread_count: number }>('messages/unread-count')
+  return data.unread_count
 }
 
 export async function adminGetStudentMessages(studentId: number): Promise<MessageAPI[]> {
-  return request(`/messages/student/${studentId}`)
+  return request(`messages/admin/student/${studentId}`)
 }
 
 export async function adminSendMessageToStudent(
@@ -609,8 +699,68 @@ export async function adminSendMessageToStudent(
   stepNumber: number,
   message: string,
 ): Promise<any> {
-  return request(`/messages/student/${studentId}`, {
+  return request(`messages/admin/send/${studentId}`, {
     method: 'POST',
     body: JSON.stringify({ process_code: processCode, step_number: stepNumber, message }),
   })
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Developer Panel
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function developerLogin(credentials: any): Promise<any> {
+  return request('developer/login', { method: 'POST', body: JSON.stringify(credentials) })
+}
+
+export async function developerGetStatus(): Promise<any> {
+  return request('developer/status')
+}
+
+export async function developerGetActiveSessions(): Promise<any[]> {
+  return request('developer/active-sessions')
+}
+
+export async function developerGetUploadLogs(): Promise<any[]> {
+  return request('developer/upload-logs')
+}
+
+export async function developerDeleteStudent(id: number): Promise<any> {
+  return request(`developer/users/student/${id}`, { method: 'DELETE' })
+}
+
+export async function developerDeleteAdmin(id: number): Promise<any> {
+  return request(`developer/users/admin/${id}`, { method: 'DELETE' })
+}
+
+export async function validateDocument(file: File, studentId?: number): Promise<any> {
+  const formData = new FormData()
+  formData.append('file', file)
+  if (studentId) {
+    formData.append('student_id', studentId.toString())
+  }
+  const res = await api.post('validate/upload', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  })
+  return res.data
+}
+
+export async function validateUnifiedDocuments(files: Record<string, File | null>, studentId?: number): Promise<any> {
+  const formData = new FormData()
+  
+  Object.entries(files).forEach(([key, file]) => {
+    if (file) {
+      formData.append(key, file)
+    }
+  })
+  
+  if (studentId) {
+    formData.append('student_id', studentId.toString())
+  }
+  
+  const res = await api.post('validate/unified', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  })
+  return res.data
+}
+

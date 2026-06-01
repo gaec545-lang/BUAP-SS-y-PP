@@ -1,0 +1,56 @@
+name: Deploy Azure Backend
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: '1. Descargar Código'
+        uses: actions/checkout@v4
+
+      - name: '2. Configurar Python 3.12'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: '3. Instalar Dependencias'
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: '4. Empaquetar para Azure'
+        run: zip -r release.zip . -x "*.git*" "venv/*" "__pycache__/*" "*.db"
+
+      - name: '5. Desplegar a Azure Web App'
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: 'app-buap-backend'
+          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
+          package: release.zip
+
+  build_and_deploy_job:
+    if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.action != 'closed')
+    runs-on: ubuntu-latest
+    name: Build and Deploy Job
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+          lfs: false
+      - name: Build And Deploy
+        id: builddeploy
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          action: "upload"
+          app_location: "frontend"
+          api_location: ""
+          output_location: "dist"
+        env:
+          VITE_API_URL: "https://app-buap-backend-axgrbkabgsh2h6g8.mexicocentral-01.azurewebsites.net"

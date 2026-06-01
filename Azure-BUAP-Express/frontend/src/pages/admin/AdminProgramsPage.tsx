@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react'
 import {
-  Upload, FileSpreadsheet, AlertCircle, CheckCircle2, Loader2,
-  Search, Filter, Building2, Users, BookOpen, ChevronDown, ChevronUp, Briefcase
-} from 'lucide-react'
+   Upload, FileSpreadsheet, AlertCircle, CheckCircle2, Loader2,
+   Search, Filter, Building2, Users, BookOpen, ChevronDown, ChevronUp, Briefcase, FileText
+ } from 'lucide-react'
+
 import { AdminLayout, AdminPageHeader } from './AdminLayout'
-import { adminUploadPrograms, adminGetPrograms, adminGetProgramStats, adminGetCareers } from '../../services/api'
+import { adminUploadPrograms, adminUploadProgramsPdf, adminGetPrograms, adminGetProgramStats, adminGetCareers } from '../../services/api'
+
 
 export function AdminProgramsPage() {
   const [file, setFile] = useState<File | null>(null)
@@ -12,6 +14,13 @@ export function AdminProgramsPage() {
   const [uploadResult, setUploadResult] = useState<any>(null)
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [showUpload, setShowUpload] = useState(false)
+
+  const [pdfFiles, setPdfFiles] = useState<File[]>([])
+  const [pdfUploading, setPdfUploading] = useState(false)
+  const [pdfUploadResult, setPdfUploadResult] = useState<any>(null)
+  const [pdfUploadError, setPdfUploadError] = useState<string | null>(null)
+  const [showPdfUpload, setShowPdfUpload] = useState(false)
+
 
   const [programs, setPrograms] = useState<any[]>([])
   const [careers, setCareers] = useState<any[]>([])
@@ -23,6 +32,32 @@ export function AdminProgramsPage() {
   const [search, setSearch] = useState('')
   const [typeFilter, setTypeFilter] = useState('all')
   const [careerFilter, setCareerFilter] = useState('all')
+  const [responsibleFilter, setResponsibleFilter] = useState('all')
+
+  // Column Resizing
+  const [columnWidths, setColumnWidths] = useState<{ [key: string]: number }>({
+    folio: 100,
+    name: 350,
+    career: 120,
+    responsible: 200,
+    slots: 120,
+    status: 120
+  })
+
+  const handleResize = (column: string, startX: number, startWidth: number) => {
+    const onMouseMove = (e: MouseEvent) => {
+      const newWidth = Math.max(80, startWidth + (e.clientX - startX))
+      setColumnWidths(prev => ({ ...prev, [column]: newWidth }))
+    }
+    const onMouseUp = () => {
+      document.removeEventListener('mousemove', onMouseMove)
+      document.removeEventListener('mouseup', onMouseUp)
+      document.body.style.cursor = 'default'
+    }
+    document.addEventListener('mousemove', onMouseMove)
+    document.addEventListener('mouseup', onMouseUp)
+    document.body.style.cursor = 'col-resize'
+  }
 
   const loadData = async (cFilter?: string, tFilter?: string) => {
     setLoading(true)
@@ -92,11 +127,48 @@ export function AdminProgramsPage() {
     }
   }
 
+  const handlePdfFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      setPdfFiles(Array.from(e.target.files))
+      setPdfUploadResult(null)
+      setPdfUploadError(null)
+    }
+  }
+
+  const handlePdfUpload = async () => {
+    if (pdfFiles.length === 0) return
+
+    setPdfUploading(true)
+    setPdfUploadError(null)
+    setPdfUploadResult(null)
+
+    try {
+      const res = await adminUploadProgramsPdf(pdfFiles)
+      setPdfUploadResult(res)
+      setPdfFiles([])
+      loadData()
+    } catch (err: any) {
+      setPdfUploadError(err.message ?? 'Error al subir los PDFs.')
+    } finally {
+      setPdfUploading(false)
+    }
+  }
+
+
   const filteredPrograms = programs.filter(p => {
-    return p.name.toLowerCase().includes(search.toLowerCase()) || 
+    const matchesSearch = p.name.toLowerCase().includes(search.toLowerCase()) || 
            p.folio.toLowerCase().includes(search.toLowerCase()) ||
-           (p.dependency_name && p.dependency_name.toLowerCase().includes(search.toLowerCase()))
+           (p.dependency_name && p.dependency_name.toLowerCase().includes(search.toLowerCase())) ||
+           (p.responsible_name && p.responsible_name.toLowerCase().includes(search.toLowerCase()))
+    
+    const matchesResp = responsibleFilter === 'all' || 
+                       (responsibleFilter === 'registered' && (p.responsible_name && p.responsible_name.trim() !== "")) ||
+                       (responsibleFilter === 'pending' && (!p.responsible_name || p.responsible_name.trim() === ""))
+
+    return matchesSearch && matchesResp
   })
+
+  const totalWidth = Object.values(columnWidths).reduce((a, b) => a + b, 0)
 
   return (
     <AdminLayout>
@@ -202,6 +274,25 @@ export function AdminProgramsPage() {
                 </svg>
               </div>
             </div>
+
+            {/* Responsible Filter */}
+            <div className="relative w-full sm:w-48">
+              <Filter size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-content-tertiary" />
+              <select
+                value={responsibleFilter}
+                onChange={(e) => setResponsibleFilter(e.target.value)}
+                className="w-full pl-8 pr-8 py-2 text-sm rounded-input border border-surface-border focus:outline-none focus:ring-2 focus:ring-primary-300 appearance-none bg-white font-medium"
+              >
+                <option value="all">Todos (Resp.)</option>
+                <option value="registered">Con Responsable</option>
+                <option value="pending">Pendientes</option>
+              </select>
+              <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-content-tertiary">
+                <svg width="10" height="6" viewBox="0 0 10 6" fill="none">
+                  <path d="M1 1L5 5L9 1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </div>
+            </div>
           </div>
           <button
             onClick={() => setShowUpload(!showUpload)}
@@ -211,7 +302,16 @@ export function AdminProgramsPage() {
             {showUpload ? 'Ocultar carga' : 'Subir Excel'}
             {showUpload ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
           </button>
+              <button
+            onClick={() => setShowPdfUpload(!showPdfUpload)}
+            className="flex items-center gap-2 px-4 py-2 bg-surface text-content-primary hover:bg-surface-hover text-sm font-medium rounded-button border border-surface-border transition-colors duration-150 w-full sm:w-auto"
+          >
+            <Upload size={16} className="text-primary-600" />
+            {showPdfUpload ? 'Ocultar PDF' : 'Subir PDF (Responsables)'}
+            {showPdfUpload ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+          </button>
         </div>
+
 
         {/* Upload Section (Toggleable) */}
         {showUpload && (
@@ -254,7 +354,7 @@ export function AdminProgramsPage() {
 
                 {uploadError && (
                   <div className="mt-4 flex items-start gap-2 p-3 rounded-lg bg-danger-light border border-danger/20">
-                    <AlertCircle size={16} className="text-danger flex-shrink-0 mt-0.5" />
+                    <AlertCircle size={16} className="text-danger flex-shrink-0" />
                     <p className="text-sm text-danger-dark">{uploadError}</p>
                   </div>
                 )}
@@ -299,6 +399,124 @@ export function AdminProgramsPage() {
           </div>
         )}
 
+        {/* PDF Upload Section (Toggleable) */}
+        {showPdfUpload && (
+          <div className="bg-white rounded-card border border-surface-border shadow-card p-6 max-w-3xl animate-slide-up">
+            <div className="flex items-start gap-4">
+              <div className="w-12 h-12 rounded-lg bg-primary-50 flex items-center justify-center flex-shrink-0">
+                <Upload size={24} className="text-primary-600" />
+              </div>
+              <div className="flex-1">
+                <h2 className="text-base font-semibold text-content-primary mb-1">Carga de PDF (Responsables)</h2>
+                <p className="text-sm text-content-secondary mb-4">
+                  Sube el PDF de la coordinación que contiene los Nombres y Cargos de los responsables por cada folio.
+                </p>
+
+                <div className="border-2 border-dashed border-primary-200 rounded-2xl p-8 flex flex-col items-center justify-center text-center hover:bg-primary-50 transition-colors duration-150 bg-gray-50/50">
+                  <input
+                    type="file"
+                    id="pdf-upload"
+                    accept=".pdf"
+                    multiple
+                    className="hidden"
+                    onChange={handlePdfFileChange}
+                  />
+                  {pdfFiles.length === 0 ? (
+                    <label htmlFor="pdf-upload" className="cursor-pointer flex flex-col items-center">
+                      <div className="w-16 h-16 rounded-full bg-primary-100 flex items-center justify-center mb-4 text-primary-600">
+                        <Upload size={32} />
+                      </div>
+                      <span className="text-base font-bold text-primary-700 hover:text-primary-800">
+                        Haz clic para seleccionar uno o varios PDFs
+                      </span>
+                      <span className="text-sm text-content-tertiary mt-2">
+                        El archivo debe contener folios, nombres y cargos.
+                      </span>
+                    </label>
+                  ) : (
+                    <div className="flex flex-col items-center animate-bounce-in w-full max-h-48 overflow-y-auto px-4">
+                      <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center mb-3 text-green-600">
+                        <FileText size={24} />
+                      </div>
+                      <span className="text-sm font-bold text-gray-800 mb-2">
+                        {pdfFiles.length === 1 ? '1 archivo seleccionado' : `${pdfFiles.length} archivos seleccionados`}
+                      </span>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full">
+                        {pdfFiles.map((f, i) => (
+                          <div key={i} className="text-[10px] bg-white border border-gray-200 rounded p-1 truncate flex items-center gap-1">
+                            <FileText size={10} className="text-gray-400" />
+                            {f.name}
+                          </div>
+                        ))}
+                      </div>
+                      <button 
+                        onClick={() => setPdfFiles([])}
+                        className="mt-3 text-xs text-danger hover:underline font-medium"
+                      >
+                        Limpiar selección
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+
+                <div className="mt-8 flex flex-col sm:flex-row items-center justify-between gap-6 border-t border-gray-100 pt-6">
+                  <div className="flex-1 w-full">
+                    {pdfUploading && (
+                      <div className="flex flex-col gap-2.5 p-4 rounded-xl bg-primary-50 border border-primary-100 animate-pulse w-full">
+                        <div className="flex items-center gap-3">
+                          <Loader2 size={18} className="text-primary-600 animate-spin flex-shrink-0" />
+                          <div className="flex-1">
+                            <p className="text-xs font-bold text-primary-850">Procesando y parseando PDFs...</p>
+                            <p className="text-[10px] text-primary-600">Extrayendo folios, nombres y cargos de responsables en segundo plano.</p>
+                          </div>
+                        </div>
+                        <div className="h-1.5 w-full bg-primary-200/50 rounded-full overflow-hidden">
+                          <div className="h-full bg-primary-600 rounded-full animate-pulse" style={{ width: '70%' }} />
+                        </div>
+                      </div>
+                    )}
+                    {pdfUploadError && (
+                      <div className="flex items-start gap-3 p-4 rounded-xl bg-danger-light border border-danger/20 animate-shake">
+                        <AlertCircle size={20} className="text-danger flex-shrink-0" />
+                        <p className="text-sm text-danger-dark font-semibold leading-snug">{pdfUploadError}</p>
+                      </div>
+                    )}
+                    {pdfUploadResult && (
+                      <div className="flex items-center gap-3 p-4 rounded-xl bg-success-light border border-success/20 animate-fade-in">
+                        <CheckCircle2 size={20} className="text-success flex-shrink-0" />
+                        <p className="text-sm font-bold text-success-dark">
+                          ¡Éxito! Se actualizaron {pdfUploadResult.updated_count} programas.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                  
+                  <button
+                    onClick={handlePdfUpload}
+                    disabled={pdfFiles.length === 0 || pdfUploading}
+                    className="w-full sm:w-auto flex items-center justify-center gap-3 px-6 py-2.5 bg-primary-600 hover:bg-primary-700 disabled:bg-primary-300 text-white text-sm font-medium rounded-lg shadow-md transition-all transform hover:scale-102 active:scale-98 whitespace-nowrap"
+                  >
+                    {pdfUploading ? (
+                      <>
+                        <Loader2 size={16} className="animate-spin" />
+                        Procesando...
+                      </>
+                    ) : (
+                      <>
+                        <Upload size={16} />
+                        Actualizar Responsables
+                      </>
+                    )}
+                  </button>
+                </div>
+
+              </div>
+            </div>
+          </div>
+        )}
+
+
         {/* Table */}
         <div className="bg-white rounded-card border border-surface-border shadow-card overflow-hidden">
           {loading ? (
@@ -324,15 +542,91 @@ export function AdminProgramsPage() {
               </p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm">
-                <thead className="bg-surface text-content-secondary border-b border-surface-border">
+            <div className="overflow-x-auto border-t border-surface-border">
+              <table 
+                className="text-left text-sm"
+                style={{ width: '100%', minWidth: totalWidth, tableLayout: 'fixed' }}
+              >
+                <thead className="bg-surface text-content-secondary border-b border-surface-border select-none">
                   <tr>
-                    <th className="px-6 py-3 font-medium">Folio</th>
-                    <th className="px-6 py-3 font-medium">Programa</th>
-                    <th className="px-6 py-3 font-medium">Carrera</th>
-                    <th className="px-6 py-3 font-medium">Cupo</th>
-                    <th className="px-6 py-3 font-medium">Estado</th>
+                    <th 
+                      className="px-6 py-3 font-medium relative select-none"
+                      style={{ width: columnWidths.folio, minWidth: columnWidths.folio }}
+                    >
+                      <div className="flex items-center">Folio</div>
+                      <div 
+                        onMouseDown={(e) => handleResize('folio', e.clientX, columnWidths.folio)}
+                        className="absolute right-0 top-0 bottom-0 w-4 cursor-col-resize group flex justify-center items-center z-10"
+                        title="Arrastra para ajustar"
+                      >
+                        <div className="w-[2px] h-4 bg-transparent group-hover:bg-primary-300 transition-colors" />
+                      </div>
+                    </th>
+                    <th 
+                      className="px-6 py-3 font-medium relative select-none"
+                      style={{ width: columnWidths.name, minWidth: columnWidths.name }}
+                    >
+                      <div className="flex items-center">Programa</div>
+                      <div 
+                        onMouseDown={(e) => handleResize('name', e.clientX, columnWidths.name)}
+                        className="absolute right-0 top-0 bottom-0 w-4 cursor-col-resize group flex justify-center items-center z-10"
+                        title="Arrastra para ajustar"
+                      >
+                        <div className="w-[2px] h-4 bg-transparent group-hover:bg-primary-300 transition-colors" />
+                      </div>
+                    </th>
+                    <th 
+                      className="px-6 py-3 font-medium relative select-none"
+                      style={{ width: columnWidths.career, minWidth: columnWidths.career }}
+                    >
+                      <div className="flex items-center">Carrera</div>
+                      <div 
+                        onMouseDown={(e) => handleResize('career', e.clientX, columnWidths.career)}
+                        className="absolute right-0 top-0 bottom-0 w-4 cursor-col-resize group flex justify-center items-center z-10"
+                        title="Arrastra para ajustar"
+                      >
+                        <div className="w-[2px] h-4 bg-transparent group-hover:bg-primary-300 transition-colors" />
+                      </div>
+                    </th>
+                    <th 
+                      className="px-6 py-3 font-medium relative select-none"
+                      style={{ width: columnWidths.responsible, minWidth: columnWidths.responsible }}
+                    >
+                      <div className="flex items-center">Responsable</div>
+                      <div 
+                        onMouseDown={(e) => handleResize('responsible', e.clientX, columnWidths.responsible)}
+                        className="absolute right-0 top-0 bottom-0 w-4 cursor-col-resize group flex justify-center items-center z-10"
+                        title="Arrastra para ajustar"
+                      >
+                        <div className="w-[2px] h-4 bg-transparent group-hover:bg-primary-300 transition-colors" />
+                      </div>
+                    </th>
+                    <th 
+                      className="px-6 py-3 font-medium relative select-none"
+                      style={{ width: columnWidths.slots, minWidth: columnWidths.slots }}
+                    >
+                      <div className="flex items-center">Cupo</div>
+                      <div 
+                        onMouseDown={(e) => handleResize('slots', e.clientX, columnWidths.slots)}
+                        className="absolute right-0 top-0 bottom-0 w-4 cursor-col-resize group flex justify-center items-center z-10"
+                        title="Arrastra para ajustar"
+                      >
+                        <div className="w-[2px] h-4 bg-transparent group-hover:bg-primary-300 transition-colors" />
+                      </div>
+                    </th>
+                    <th 
+                      className="px-6 py-3 font-medium relative select-none"
+                      style={{ width: columnWidths.status, minWidth: columnWidths.status }}
+                    >
+                      <div className="flex items-center">Estado</div>
+                      <div 
+                        onMouseDown={(e) => handleResize('status', e.clientX, columnWidths.status)}
+                        className="absolute right-0 top-0 bottom-0 w-4 cursor-col-resize group flex justify-center items-center z-10"
+                        title="Arrastra para ajustar"
+                      >
+                        <div className="w-[2px] h-4 bg-transparent group-hover:bg-primary-300 transition-colors" />
+                      </div>
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-surface-border">
@@ -374,6 +668,17 @@ export function AdminProgramsPage() {
                             <span className="text-xs text-content-tertiary italic">N/A</span>
                           )}
                         </td>
+                        <td className="px-6 py-4">
+                          {p.responsible_name ? (
+                            <div className="flex flex-col">
+                              <span className="text-xs font-medium text-content-primary line-clamp-1">{p.responsible_name}</span>
+                              <span className="text-[10px] text-content-tertiary line-clamp-1">{p.responsible_position}</span>
+                            </div>
+                          ) : (
+                            <span className="text-[10px] text-danger-dark font-medium bg-danger-light px-1.5 py-0.5 rounded">Pendiente</span>
+                          )}
+                        </td>
+
                         <td className="px-6 py-4">
                           <div className="flex flex-col gap-1.5 w-24">
                             <div className="flex items-center justify-between text-xs">
