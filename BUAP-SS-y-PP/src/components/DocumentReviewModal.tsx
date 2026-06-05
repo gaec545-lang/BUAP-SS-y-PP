@@ -12,12 +12,22 @@ import {
 } from 'lucide-react'
 import { getUploadBlobUrl, adminApproveUpload, adminRejectUpload } from '../services/api'
 
+export interface UploadData {
+  upload_id: number;
+  filename?: string;
+  folio?: string;
+  confidence_score?: number;
+  validation_observations?: string;
+  reason?: string;
+  [key: string]: unknown;
+}
+
 export function DocumentReviewModal({
   upload,
   onClose,
   onRefresh,
 }: {
-  upload: any
+  upload: UploadData
   onClose: () => void
   onRefresh: () => void
 }) {
@@ -43,8 +53,9 @@ export function DocumentReviewModal({
       try {
         const url = await getUploadBlobUrl(upload.upload_id)
         setBlobUrl(url)
-      } catch (err: any) {
-        setErrorFile(err.message ?? 'Error al cargar el documento')
+      } catch (err) {
+        const error = err as Error;
+        setErrorFile(error.message ?? 'Error al cargar el documento')
       } finally {
         setLoadingFile(false)
       }
@@ -62,8 +73,9 @@ export function DocumentReviewModal({
       await adminApproveUpload(upload.upload_id)
       onRefresh()
       onClose()
-    } catch (err: any) {
-      setActionError(err.message ?? 'Error al aprobar')
+    } catch (err) {
+      const error = err as Error;
+      setActionError(error.message ?? 'Error al aprobar')
       setActionLoading(false)
     }
   }
@@ -76,8 +88,9 @@ export function DocumentReviewModal({
       await adminRejectUpload(upload.upload_id, rejectReason)
       onRefresh()
       onClose()
-    } catch (err: any) {
-      setActionError(err.message ?? 'Error al rechazar')
+    } catch (err) {
+      const error = err as Error;
+      setActionError(error.message ?? 'Error al rechazar')
       setActionLoading(false)
     }
   }
@@ -150,7 +163,7 @@ export function DocumentReviewModal({
                       <span className={`text-sm font-medium ${
                         upload.confidence_score >= 80 ? 'text-success-dark' : 'text-warning-dark'
                       }`}>
-                        {upload.confidence_score != null ? \`\${upload.confidence_score.toFixed(1)}%\` : 'N/A'}
+                        {upload.confidence_score != null ? `${upload.confidence_score.toFixed(1)}%` : 'N/A'}
                       </span>
                     </div>
                   </div>
@@ -267,7 +280,7 @@ export function DocumentReviewModal({
                 ) : blobUrl ? (
                   <div 
                     className="transition-transform duration-200 origin-center flex items-center justify-center min-h-full"
-                    style={{ transform: \`scale(\${zoom}) rotate(\${rotation}deg)\` }}
+                    style={{ transform: `scale(${zoom}) rotate(${rotation}deg)` }}
                   >
                     {isImage ? (
                       <img src={blobUrl} alt="Preview" className="max-w-full max-h-[80vh] object-contain shadow-2xl bg-white" />
