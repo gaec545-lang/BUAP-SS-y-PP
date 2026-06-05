@@ -226,32 +226,67 @@ def validate_document(
     # ─── 4. Detección visual de firma y sello ─────────────────────────────────
     sig_result = detect_signatures(pdf_bytes)
 
+    # Determinar si el tipo de documento requiere firma y/o sello
+    requires_sig = False
+    requires_stmp = False
+    doc_type_obj = None
+
+    if upload_id:
+        upload = db.query(models.FactDocumentUpload).filter_by(id=upload_id).first()
+        if upload and upload.document_type_id:
+            doc_type_obj = db.query(models.DimDocumentType).filter_by(id=upload.document_type_id).first()
+
+    if not doc_type_obj and fields.doc_type:
+        doc_type_obj = db.query(models.DimDocumentType).filter_by(code=fields.doc_type).first()
+
+    if doc_type_obj:
+        requires_sig = doc_type_obj.requires_signature
+        requires_stmp = doc_type_obj.requires_stamp
+
     # Check: firma
-    if sig_result.firma_confidence >= 0.60:
+    if not requires_sig:
         firma_check_result = "pass"
+        firma_detail = "Firma no requerida para este tipo de documento"
+    elif sig_result.firma_confidence >= 0.60:
+        firma_check_result = "pass"
+        firma_detail = sig_result.firma_detail
     elif sig_result.firma_confidence >= 0.30:
         firma_check_result = "warning"
+        firma_detail = sig_result.firma_detail
     else:
         firma_check_result = "fail"
+        firma_detail = sig_result.firma_detail
 
     checks.append(_make_check(
         "firma_detected", firma_check_result,
-        confidence=sig_result.firma_confidence,
-        detail=sig_result.firma_detail,
+        confidence=sig_result.firma_confidence if requires_sig else 1.0,
+        detail=firma_detail,
     ))
 
     # Check: sello
-    if sig_result.sello_confidence >= 0.60:
+    if not requires_stmp:
         sello_check_result = "pass"
+        sello_detail = "Sello no requerido para este tipo de documento"
+    elif sig_result.sello_confidence >= 0.60:
+        sello_check_result = "pass"
+        sello_detail = sig_result.sello_detail
     elif sig_result.sello_confidence >= 0.30:
         sello_check_result = "warning"
+        sello_detail = sig_result.sello_detail
     else:
         sello_check_result = "fail"
+        sello_detail = sig_result.sello_detail
 
     checks.append(_make_check(
         "sello_detected", sello_check_result,
-        confidence=sig_result.sello_confidence,
-        detail=sig_result.sello_detail,
+        confidence=sig_result.sello_confidence if requires_stmp else 1.0,
+        detail=sello_detail,
+    ))
+
+    # Check: falsificación/alteración digital
+    checks.append(_make_check(
+        "falsificacion_detectada", sig_result.falsification_status,
+        detail=sig_result.falsification_detail,
     ))
 
     # ─── 5. Resultado global ──────────────────────────────────────────────────

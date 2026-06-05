@@ -483,6 +483,10 @@ export async function adminGetStudentUploads(studentId: number): Promise<any[]> 
   return request(`uploads/student/${studentId}`)
 }
 
+export async function adminGetStudentUploadHistory(studentId: number): Promise<any[]> {
+  return request(`uploads/student/${studentId}/history`)
+}
+
 
 export async function adminApproveUpload(uploadId: number): Promise<any> {
   return request(`uploads/${uploadId}/approve`, { method: 'POST' })

@@ -19,6 +19,8 @@ class SignatureDetectionResult:
     sello_detected: bool
     sello_confidence: float   # 0.0 - 1.0
     sello_detail: str
+    falsification_status: str = "pass"
+    falsification_detail: str = "No se detectaron indicios de alteración digital."
 
 
 # Umbral de píxel para considerar "oscuro" (0=negro, 255=blanco)
@@ -137,9 +139,61 @@ def detect_sello(page_img: Image.Image) -> Tuple[float, str]:
     return 0.1, f"Sello no detectado (azul: {blue_ink_pixels}, oscuro: {dark_count})"
 
 
+def check_falsification_from_doc(doc) -> Tuple[str, str]:
+    """
+    Analiza metadatos y estructura del PDF para detectar posibles alteraciones o herramientas de edición.
+    Retorna (status, detail) donde status es 'pass', 'warning' o 'fail'.
+    """
+    try:
+        metadata = doc.metadata or {}
+        
+        # 1. Verificar herramientas de edición conocidas en el Creador/Productor
+        forgery_tools = [
+            "photoshop", "illustrator", "gimp", "inkscape", "pdfescape", 
+            "soda pdf", "smallpdf", "ilovepdf", "pdf2go", "sejda", "canva"
+        ]
+        
+        creator = (metadata.get("creator") or "").lower()
+        producer = (metadata.get("producer") or "").lower()
+        
+        for tool in forgery_tools:
+            if tool in creator or tool in producer:
+                return "fail", f"Documento modificado digitalmente con la herramienta: {tool} (detectado en metadatos)."
+                
+        generic_pdf_editors = ["foxit", "nitro", "acrobat pro", "pdf creator", "pdf architect", "wondershare"]
+        for tool in generic_pdf_editors:
+            if tool in creator or tool in producer:
+                return "warning", f"El documento fue guardado o editado con {tool}. Verificar que no haya sido alterado."
+                
+        # 2. Detección de firmas digitales/digitalizadas pegadas como imágenes sobre PDF digital
+        has_native_text = False
+        for page in doc:
+            if len(page.get_text().strip()) > 100:
+                has_native_text = True
+                break
+                
+        if has_native_text and len(doc) > 0:
+            page = doc[0]
+            w, h = page.rect.width, page.rect.height
+            images = page.get_image_info()
+            for img in images:
+                bbox = img["bbox"] # (x0, y0, x1, y1)
+                img_w = bbox[2] - bbox[0]
+                img_h = bbox[3] - bbox[1]
+                img_y0 = bbox[1]
+                # Si la imagen está en el tercio inferior y es pequeña (menor al 45% del ancho de la página y menor al 35% del alto)
+                if img_y0 > h * 0.6 and img_w < w * 0.45 and img_h < h * 0.35:
+                    # Es muy probable que sea una firma pegada como imagen (los PDFs oficiales generados por el sistema no tienen imágenes en la firma)
+                    return "fail", "Se detectó una firma digitalizada o pegada como imagen sobre el PDF. Se requiere firma manuscrita autógrafa física escaneada."
+                    
+        return "pass", "No se detectaron indicios obvios de edición digital o firmas pegadas."
+    except Exception as e:
+        return "warning", f"Error al analizar metadatos del PDF: {str(e)}"
+
+
 def detect_signatures(pdf_bytes: bytes) -> SignatureDetectionResult:
     """
-    Analiza la primera página del PDF para detectar firma y sello.
+    Analiza la primera página del PDF para detectar firma y sello, e indicios de falsificación.
     """
     try:
         doc = fitz.open(stream=pdf_bytes, filetype="pdf")
@@ -149,10 +203,15 @@ def detect_signatures(pdf_bytes: bytes) -> SignatureDetectionResult:
                 firma_detail="PDF vacío",
                 sello_detected=False, sello_confidence=0.0,
                 sello_detail="PDF vacío",
+                falsification_status="fail",
+                falsification_detail="PDF vacío"
             )
 
         page = doc[0]
         img = _render_page_to_pil(page, dpi=150)
+        
+        # Analizar falsificación antes de cerrar el documento
+        falsification_status, falsification_detail = check_falsification_from_doc(doc)
         doc.close()
 
         firma_conf, firma_detail = detect_firma(img)
@@ -165,6 +224,8 @@ def detect_signatures(pdf_bytes: bytes) -> SignatureDetectionResult:
             sello_detected=sello_conf >= 0.60,
             sello_confidence=round(sello_conf, 3),
             sello_detail=sello_detail,
+            falsification_status=falsification_status,
+            falsification_detail=falsification_detail
         )
     except Exception as e:
         return SignatureDetectionResult(
@@ -172,4 +233,6 @@ def detect_signatures(pdf_bytes: bytes) -> SignatureDetectionResult:
             firma_detail=f"Error en detección: {str(e)}",
             sello_detected=False, sello_confidence=0.0,
             sello_detail=f"Error en detección: {str(e)}",
+            falsification_status="warning",
+            falsification_detail=f"Error al analizar el PDF: {str(e)}"
         )

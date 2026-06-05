@@ -63,139 +63,45 @@ def parse_program_pdf(file_path: str, db: Session) -> int:
     responsible_name = None
     responsible_position = None
 
-    # Specific headers from the BUAP format
-    name_headers = [
-        r"Nombre del responsable de supervisar el cumplimiento de los objetivos y actividades de los alumnos en la dependencia",
-        r"Nombre de la persona a quién se dirigirá el nombramiento de práctica profesional",
-        r"Nombre de la persona a quién se dirigirá el nombramiento de servicio social",
-        r"Nombre del responsable",
-        r"Responsable",
-        r"Atentamente",
-        r"Dirigido a"
-    ]
-    pos_headers = [
-        r"Puesto o cargo del responsable",
-        r"Cargo",
-        r"Puesto"
-    ]
+    # Merge newlines in original text to simplify regex searches while maintaining casing and accents
+    orig_norm = re.sub(r'[\r\n\t]+', ' ', text)
+    orig_norm = re.sub(r'\s+', ' ', orig_norm).strip()
 
-    def clean_extracted_value(val, headers_to_strip):
-        if not val: return None
-        v = val.strip()
-        
-        # If there's a colon, take what's after it
-        if ":" in v:
-            parts = v.split(":", 1)
-            if len(parts[0]) < 50:
-                v = parts[1].strip()
-        
-        # Remove common prefixes
-        for h in headers_to_strip:
-            # Clean header regex for replacement
-            h_clean = h.replace(r"\s*", " ").replace(r"\.", "\\.")
-            v = re.sub(rf"^{h_clean}[:\s]*", "", v, flags=re.IGNORECASE).strip()
-        
-        # Remove common noise
-        v = re.sub(r"^(Responsalbe|Responsable|Nombre|Cargo)[:\s]*", "", v, flags=re.IGNORECASE).strip()
-        
-        # Shield check: If the extracted value contains header labels or metadata, discard it
-        forbidden_keywords = [
-            "nombre del responsable", "supervisar el cumplimiento", "de los objetivos", "actividades de los alumnos",
-            "puesto o cargo", "responsable de los alumnos", "persona a quién", "se dirigirá el nombramiento",
-            "nombramiento de", "no. de programa", "fecha de registro", "empresa que oferta", "sector al que",
-            "datos generales", "tipo de programa", "área o departamento", "fecha de inicio", "fecha de término",
-            "duración en meses", "correo electrónico", "dirección donde", "información para", "apoyo económico",
-            "ejes rectores", "perfil educativo", "coordinador cppc", "atentamente", "dirigido a", "comentario"
-        ]
-        v_lower = v.lower()
-        for kw in forbidden_keywords:
-            if kw in v_lower:
-                return None
-        
-        if len(v) < 3: return None
-        return v
+    # Regex to find name and cargo under "Información para generar nombramiento"
+    pattern = (
+        r"nombre\s+de\s+la\s+persona\s+a\s+qui[eé]n\s+se\s+dirigir[aá]\s+el\s+nombramiento\s+de\s+"
+        r"(?:pr[aá]ctica|servicio)\s+(?:profesional|social)\s*:\s*(.*?)\s+cargo\s*:\s*(.*?)"
+        r"(?:\s+(?:informaci[oó]n del programa|apoyo|ejes|\uf431|evaluaci[oó]n|perfil)|$)"
+    )
+    match = re.search(pattern, orig_norm, re.IGNORECASE)
 
-    # Strategy 1: Look for the line IMMEDIATELY AFTER the specific headers
-    lines = [line.strip() for line in text.split('\n') if line.strip()]
-    for i, line in enumerate(lines):
-        # Check for Folio if not found yet (backup for multi-line)
-        if not folio and "No. de programa" in line and i + 1 < len(lines):
-            folio = lines[i+1].strip()
+    if match:
+        responsible_name = match.group(1).strip()
+        responsible_position = match.group(2).strip()
+    else:
+        # Fallback to supervisor info
+        pattern_sup = (
+            r"nombre\s+del\s+responsable\s+de\s+supervisar\s+el\s+cumplimiento\s+de\s+los\s+objetivos"
+            r"\s+y\s+actividades\s+de\s+los\s+alumnos\s+en\s+la\s+dependencia\s*:\s*(.*?)\s+"
+            r"puesto\s+o\s+cargo\s+del\s+responsable\s*:\s*(.*?)(?:\s+(?:correo|tel[eé]fono|direcci[oó]n)|$)"
+        )
+        match_sup = re.search(pattern_sup, orig_norm, re.IGNORECASE)
+        if match_sup:
+            responsible_name = match_sup.group(1).strip()
+            responsible_position = match_sup.group(2).strip()
 
-        # Check for Responsible Name
-        for h in name_headers:
-            # Match header (normalized). If header spans 2 lines, check joined version.
-            combined = line + " " + (lines[i+1] if i+1 < len(lines) else "")
-            if h.lower() in combined.lower():
-                temp_name = None
-                if h.lower() in line.lower() and line.endswith(":"):
-                    temp_name = lines[i+1].strip()
-                elif h.lower() in combined.lower() and combined.endswith(":"):
-                    temp_name = lines[i+2].strip() if i+2 < len(lines) else lines[i+1].strip()
-                elif h.lower() in combined.lower():
-                    temp_name = lines[i+2].strip() if i+2 < len(lines) else lines[i+1].strip()
-                
-                cleaned = clean_extracted_value(temp_name, name_headers)
-                if cleaned:
-                    responsible_name = cleaned
-                    break
-        if responsible_name: break
-
-    for i, line in enumerate(lines):
-        for h in pos_headers:
-            if h.lower() in line.lower() and i + 1 < len(lines):
-                if line.endswith(":") or line.lower().endswith(h.lower()):
-                    temp_pos = lines[i+1].strip()
-                    cleaned_pos = clean_extracted_value(temp_pos, pos_headers)
-                    if cleaned_pos:
-                        responsible_position = cleaned_pos
-                        break
-        if responsible_position: break
-
-    # Strategy 2: Regex Fallback (if Strategy 1 failed)
-    if not responsible_name:
-        for header in name_headers:
-            resp_match = re.search(rf"{header}[:\s]+([A-ZÁÉÍÓÚÑa-záéíóúñ\.\s\-,]{5,100})", text, re.IGNORECASE)
-            if resp_match:
-                potential = resp_match.group(1).strip().split('\n')[0].strip()
-                responsible_name = clean_extracted_value(potential, name_headers)
-                if responsible_name: break
-
-    if not responsible_position:
-        for header in pos_headers:
-            pos_match = re.search(rf"{header}[:\s]+([A-ZÁÉÍÓÚÑa-záéíóúñ\.\s\-,]{3,100})", text, re.IGNORECASE)
-            if pos_match:
-                potential = pos_match.group(1).strip().split('\n')[0].strip()
-                responsible_position = clean_extracted_value(potential, pos_headers)
-                if responsible_position: break
+    # Clean up name and position
+    if responsible_name:
+        # Remove trailing colons, spaces or trailing dots
+        responsible_name = re.sub(r"^[:\s]+|[:\s]+$", "", responsible_name).strip()
+    if responsible_position:
+        responsible_position = re.sub(r"^[:\s]+|[:\s]+$", "", responsible_position).strip()
 
     # Fallback to the program in DB
     programs = db.query(models.DimProgram).filter_by(folio=folio).all()
     if not programs:
         print(f"[Parser] Program with folio {folio} not found in database.")
         return 0
-
-    if not responsible_name or not responsible_position:
-        lines = [line.strip() for line in text.split('\n') if line.strip()]
-        for i, line in enumerate(lines):
-            if ("Responsable" in line or "Nombre" in line) and i + 1 < len(lines):
-                if not responsible_name:
-                    potential = lines[i+1] if ":" not in line else line.split(":", 1)[1]
-                    cleaned = clean_extracted_value(potential, name_headers)
-                    if cleaned:
-                        responsible_name = cleaned
-            if "Cargo" in line or "Puesto" in line:
-                if not responsible_position:
-                    potential = lines[i+1] if ":" not in line else line.split(":", 1)[1]
-                    cleaned_pos = clean_extracted_value(potential, pos_headers)
-                    if cleaned_pos:
-                        responsible_position = cleaned_pos
-
-    # Clean up names (remove trailing noise)
-    if responsible_name:
-        responsible_name = re.sub(r"[\t\r\n]", " ", responsible_name).strip()
-    if responsible_position:
-        responsible_position = re.sub(r"[\t\r\n]", " ", responsible_position).strip()
 
     if responsible_name:
         for program in programs:

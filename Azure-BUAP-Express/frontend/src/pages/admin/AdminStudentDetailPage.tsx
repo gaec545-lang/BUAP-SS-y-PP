@@ -20,6 +20,7 @@ import {
   adminGetPendingUploads,
   adminGetStudentMessages,
   adminSendMessageToStudent,
+  adminGetStudentUploadHistory,
 } from '../../services/api'
 import { DocumentReviewModal } from '../../components/DocumentReviewModal'
 
@@ -194,15 +195,18 @@ export function AdminStudentDetailPage() {
   const [advLoading, setAdvLoading] = useState<string | null>(null)
   const [studentUploads, setStudentUploads] = useState<any[]>([])
   const [selectedUpload, setSelectedUpload] = useState<any>(null)
+  const [uploadsHistory, setUploadsHistory] = useState<any[]>([])
+  const [folioFilter, setFolioFilter] = useState('')
 
   async function load() {
     if (!id) return
     setLoading(true)
     setError(null)
     try {
-      const [studentData, allUploads] = await Promise.all([
+      const [studentData, allUploads, historyData] = await Promise.all([
         adminGetStudent(Number(id)),
         adminGetPendingUploads().catch(() => []),
+        adminGetStudentUploadHistory(Number(id)).catch(() => []),
       ])
       setData(studentData)
       // Filter uploads for this student
@@ -210,6 +214,7 @@ export function AdminStudentDetailPage() {
         (u: any) => u.student_id === Number(id) || u.student?.id === Number(id),
       )
       setStudentUploads(filtered)
+      setUploadsHistory(historyData)
     } catch (err: any) {
       setError(err.message ?? 'Error al cargar datos')
     } finally {
@@ -453,6 +458,120 @@ export function AdminStudentDetailPage() {
                 </div>
               ))
             )}
+
+            {/* Historial de Documentos */}
+            <div className="bg-white rounded-card border border-surface-border shadow-card p-5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
+                <div>
+                  <h3 className="text-base font-semibold text-content-primary">Historial de Documentos</h3>
+                  <p className="text-xs text-content-secondary mt-0.5">
+                    Todos los intentos de carga y estados de validación
+                  </p>
+                </div>
+                <div className="w-full sm:w-64">
+                  <input
+                    type="text"
+                    placeholder="Filtrar por folio..."
+                    value={folioFilter}
+                    onChange={(e) => setFolioFilter(e.target.value)}
+                    className="w-full px-3 py-1.5 text-xs rounded-input border border-surface-border
+                               focus:outline-none focus:ring-1 focus:ring-primary-300 placeholder:text-content-tertiary"
+                  />
+                </div>
+              </div>
+
+              {uploadsHistory.filter((u) => !folioFilter || u.folio?.toLowerCase().includes(folioFilter.toLowerCase())).length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-8 text-center bg-surface/30 rounded-lg border border-dashed border-surface-border">
+                  <p className="text-xs text-content-secondary">
+                    {folioFilter ? 'No hay documentos que coincidan con el folio.' : 'Sin historial de documentos para este alumno.'}
+                  </p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead>
+                      <tr className="border-b border-surface-border text-content-tertiary font-medium">
+                        <th className="py-2 px-3">Documento</th>
+                        <th className="py-2 px-3 text-center">Intento</th>
+                        <th className="py-2 px-3">Estado</th>
+                        <th className="py-2 px-3 text-center">Confianza</th>
+                        <th className="py-2 px-3 text-center">Revisión Manual</th>
+                        <th className="py-2 px-3">Logs</th>
+                        <th className="py-2 px-3 text-right">Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-surface-border">
+                      {uploadsHistory
+                        .filter((u) => !folioFilter || u.folio?.toLowerCase().includes(folioFilter.toLowerCase()))
+                        .map((u) => {
+                          const statusBadge: Record<string, { label: string; cls: string }> = {
+                            pending: { label: 'Pendiente', cls: 'bg-warning-light text-warning-dark' },
+                            approved: { label: 'Aprobado', cls: 'bg-success-light text-success-dark' },
+                            rejected: { label: 'Rechazado', cls: 'bg-danger-light text-danger-dark' },
+                          }
+                          const badge = statusBadge[u.status] ?? statusBadge.pending
+
+                          return (
+                            <tr key={u.upload_id} className="hover:bg-surface/30 transition-colors">
+                              <td className="py-3 px-3">
+                                <div className="font-medium text-content-primary">
+                                  {u.document_type_name ?? u.document_type_code ?? 'Documento'}
+                                </div>
+                                {u.folio && (
+                                  <div className="text-[10px] text-content-tertiary mt-0.5">
+                                    Folio: {u.folio}
+                                  </div>
+                                )}
+                              </td>
+                              <td className="py-3 px-3 text-center font-mono text-content-secondary">
+                                {u.attempt}
+                              </td>
+                              <td className="py-3 px-3">
+                                <span className={`inline-flex items-center px-2 py-0.5 rounded-badge text-[10px] font-medium ${badge.cls}`}>
+                                  {badge.label}
+                                </span>
+                              </td>
+                              <td className="py-3 px-3 text-center">
+                                {u.confidence_score != null ? (
+                                  <span className={`font-medium ${u.confidence_score >= 80 ? 'text-success-dark' : 'text-warning-dark'}`}>
+                                    {u.confidence_score.toFixed(0)}%
+                                  </span>
+                                ) : (
+                                  <span className="text-content-tertiary">—</span>
+                                )}
+                              </td>
+                              <td className="py-3 px-3 text-center">
+                                {u.manual_review ? (
+                                  <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-danger-light text-danger-dark text-[10px] font-medium">
+                                    Sí
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-success-light text-success-dark text-[10px] font-medium">
+                                    No
+                                  </span>
+                                )}
+                              </td>
+                              <td className="py-3 px-3 max-w-[200px] truncate text-content-secondary" title={u.logs || u.validation_observations || ''}>
+                                {u.logs || u.validation_observations || <span className="text-content-tertiary italic">Sin observaciones</span>}
+                              </td>
+                              <td className="py-3 px-3 text-right">
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedUpload(u)}
+                                  className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] bg-primary-50 text-primary-700 hover:bg-primary-100 font-medium rounded-button transition-colors duration-150"
+                                >
+                                  <Eye size={12} />
+                                  Revisar
+                                </button>
+                              </td>
+                            </tr>
+                          )
+                        })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}

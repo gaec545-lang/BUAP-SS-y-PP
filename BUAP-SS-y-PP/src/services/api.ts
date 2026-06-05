@@ -413,6 +413,10 @@ export async function adminGetStudent(id: number): Promise<any> {
   return request(`/admin/students/${id}`)
 }
 
+export async function adminGetStudentUploadHistory(studentId: number): Promise<any[]> {
+  return request(`/uploads/student/${studentId}/history`)
+}
+
 export async function adminAdvanceStep(
   studentId: number,
   processCode: string,

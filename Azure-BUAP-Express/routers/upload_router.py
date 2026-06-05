@@ -303,6 +303,83 @@ def get_student_uploads_admin(
     return result
 
 
+@router.get("/student/{student_id}/history")
+def get_student_upload_history(
+    student_id: int,
+    admin: models.OpsAdminUser = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    student = db.query(models.OpsStudent).filter_by(id=student_id).first()
+    if not student:
+        raise HTTPException(status_code=404, detail="Estudiante no encontrado.")
+
+    uploads = db.query(models.FactDocumentUpload).filter_by(
+        student_id=student_id
+    ).order_by(models.FactDocumentUpload.uploaded_at.desc()).all()
+    
+    result = []
+    for u in uploads:
+        doc_type = db.query(models.DimDocumentType).filter_by(id=u.document_type_id).first()
+        proc = db.query(models.DimProcessDefinition).filter_by(id=u.process_id).first()
+        
+        # Get approval action status
+        approval = db.query(models.FactApprovalAction).filter_by(
+            entity_type="document_upload", entity_id=u.id
+        ).order_by(models.FactApprovalAction.performed_at.desc()).first()
+        
+        status = "pending"
+        rejection_reason = None
+        if approval:
+            if approval.action == "approved":
+                status = "approved"
+            elif approval.action == "rejected":
+                status = "rejected"
+                rejection_reason = approval.reason
+                
+        # Get validation run logs
+        val_run = db.query(models.FactValidationRun).filter_by(
+            upload_id=u.id
+        ).order_by(models.FactValidationRun.validated_at.desc()).first()
+        
+        logs_str = None
+        manual_review = False
+        if val_run:
+            checks_summary = []
+            for c in val_run.checks:
+                checks_summary.append(f"{c.check_name}: {c.result}")
+            logs_str = ", ".join(checks_summary)
+            if val_run.overall_result in ("manual_review", "fail", "warning"):
+                manual_review = True
+        elif u.read_status == "manual_review":
+            manual_review = True
+
+        result.append({
+            # Formatted exactly like /my-files:
+            "id": u.id,
+            "document_type_code": doc_type.code if doc_type else None,
+            "document_type_name": doc_type.name if doc_type else None,
+            "status": status,
+            "attempt_number": u.attempt_number,
+            "confidence_score": int(u.confidence * 100) if u.confidence is not None else None,
+            "manual_review": manual_review,
+            "logs": logs_str,
+            "folio": u.folio,
+            "rejection_reason": rejection_reason,
+            "created_at": u.uploaded_at.isoformat() if u.uploaded_at else None,
+
+            # Backwards compatibility / old history fields:
+            "upload_id": u.id,
+            "filename": u.original_filename,
+            "validation_observations": u.validation_observations,
+            "reason": rejection_reason,
+            "process_code": proc.code if proc else None,
+            "process_name": proc.name if proc else None,
+            "attempt": u.attempt_number,
+            "uploaded_at": u.uploaded_at.isoformat() if u.uploaded_at else None,
+        })
+    return result
+
+
 @router.get("/{upload_id}/file")
 def get_upload_file(
     upload_id: int,
