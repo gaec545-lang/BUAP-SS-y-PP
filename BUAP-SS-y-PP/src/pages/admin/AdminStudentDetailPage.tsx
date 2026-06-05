@@ -26,6 +26,7 @@ import {
   adminGetStudentMessages,
   adminSendMessageToStudent,
 } from '../../services/api'
+import { DocumentReviewModal } from '../../components/DocumentReviewModal'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Step status badge
@@ -47,54 +48,11 @@ function StepStatusDot({ status }: { status: string }) {
 
 function UploadItem({
   upload,
-  onRefresh,
+  onReview,
 }: {
   upload: any
-  onRefresh: () => void
+  onReview: () => void
 }) {
-  const [appLoading, setAppLoading] = useState(false)
-  const [rejLoading, setRejLoading] = useState(false)
-  const [viewLoading, setViewLoading] = useState(false)
-  const [rejectReason, setRejectReason] = useState('')
-  const [showRejectInput, setShowRejectInput] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  async function handleApprove() {
-    setAppLoading(true)
-    try {
-      await adminApproveUpload(upload.id)
-      onRefresh()
-    } catch (err: any) {
-      setError(err.message ?? 'Error')
-    } finally {
-      setAppLoading(false)
-    }
-  }
-
-  async function handleReject() {
-    if (!rejectReason.trim()) return
-    setRejLoading(true)
-    try {
-      await adminRejectUpload(upload.id, rejectReason)
-      onRefresh()
-    } catch (err: any) {
-      setError(err.message ?? 'Error')
-    } finally {
-      setRejLoading(false)
-    }
-  }
-
-  async function handleView() {
-    setViewLoading(true)
-    try {
-      await openUploadFile(upload.id)
-    } catch (err: any) {
-      setError(err.message ?? 'Error')
-    } finally {
-      setViewLoading(false)
-    }
-  }
-
   const statusBadge: Record<string, { label: string; cls: string }> = {
     pending: { label: 'Pendiente', cls: 'bg-warning-light text-warning-dark' },
     approved: { label: 'Aprobado', cls: 'bg-success-light text-success-dark' },
@@ -103,82 +61,38 @@ function UploadItem({
   const badge = statusBadge[upload.status] ?? statusBadge.pending
 
   return (
-    <div className="flex flex-col gap-2 p-3 rounded-lg border border-surface-border bg-white">
+    <div className="flex flex-col gap-2 p-3 rounded-lg border border-surface-border bg-white hover:bg-surface/50 transition-colors cursor-pointer" onClick={onReview}>
       <div className="flex items-center justify-between gap-2">
         <div className="flex-1 min-w-0">
           <p className="text-sm font-medium text-content-primary truncate">
             {upload.document_type_name ?? upload.document_type ?? 'Documento'}
           </p>
-          <p className="text-xs text-content-secondary">
-            Intento {upload.attempt ?? upload.attempt_number ?? 1}
-          </p>
+          <div className="flex gap-2 items-center mt-1">
+            <p className="text-xs text-content-secondary">
+              Intento {upload.attempt ?? upload.attempt_number ?? 1}
+            </p>
+            {upload.folio && (
+              <span className="text-[10px] bg-surface-divider px-1.5 rounded text-content-tertiary">
+                Folio: {upload.folio}
+              </span>
+            )}
+          </div>
         </div>
         <span className={`inline-flex items-center px-2 py-0.5 rounded-badge text-xs font-medium ${badge.cls}`}>
           {badge.label}
         </span>
       </div>
 
-      {upload.rejection_reason && (
-        <p className="text-xs text-danger-dark bg-danger-light p-2 rounded">
-          {upload.rejection_reason}
-        </p>
-      )}
-
-      {error && <p className="text-xs text-danger">{error}</p>}
-
       {upload.status === 'pending' && (
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="mt-1">
           <button
             type="button"
-            onClick={handleView}
-            disabled={viewLoading}
-            className="flex items-center gap-1 px-2 py-1 text-xs border border-surface-border
-                       rounded-button hover:bg-surface-hover transition-colors duration-150"
+            onClick={(e) => { e.stopPropagation(); onReview() }}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-primary-50 text-primary-700 font-medium rounded-button hover:bg-primary-100 transition-colors duration-150 w-full justify-center"
           >
-            {viewLoading ? <Loader2 size={11} className="animate-spin" /> : <Eye size={11} />}
-            Ver
+            <Eye size={12} />
+            Revisar Documento
           </button>
-          <button
-            type="button"
-            onClick={handleApprove}
-            disabled={appLoading}
-            className="flex items-center gap-1 px-2 py-1 text-xs bg-success hover:bg-success-dark
-                       text-white rounded-button transition-colors duration-150"
-          >
-            {appLoading ? <Loader2 size={11} className="animate-spin" /> : <CheckCircle2 size={11} />}
-            Aprobar
-          </button>
-          {!showRejectInput ? (
-            <button
-              type="button"
-              onClick={() => setShowRejectInput(true)}
-              className="flex items-center gap-1 px-2 py-1 text-xs border border-danger/30 bg-danger-light
-                         text-danger-dark rounded-button transition-colors duration-150"
-            >
-              <XCircle size={11} />
-              Rechazar
-            </button>
-          ) : (
-            <div className="flex gap-1 flex-1">
-              <input
-                type="text"
-                value={rejectReason}
-                onChange={(e) => setRejectReason(e.target.value)}
-                placeholder="Motivo..."
-                className="flex-1 px-2 py-1 text-xs rounded-input border border-surface-border
-                           focus:outline-none focus:ring-1 focus:ring-primary-300"
-              />
-              <button
-                type="button"
-                onClick={handleReject}
-                disabled={rejLoading || !rejectReason.trim()}
-                className="px-2 py-1 text-xs bg-danger text-white rounded-button
-                           disabled:opacity-50 transition-colors"
-              >
-                {rejLoading ? <Loader2 size={11} className="animate-spin" /> : 'OK'}
-              </button>
-            </div>
-          )}
         </div>
       )}
     </div>
@@ -284,6 +198,7 @@ export function AdminStudentDetailPage() {
   const [error, setError] = useState<string | null>(null)
   const [advLoading, setAdvLoading] = useState<string | null>(null)
   const [studentUploads, setStudentUploads] = useState<any[]>([])
+  const [selectedUpload, setSelectedUpload] = useState<any>(null)
 
   async function load() {
     if (!id) return
@@ -437,7 +352,7 @@ export function AdminStudentDetailPage() {
                   Documentos pendientes
                 </h3>
                 {studentUploads.map((u) => (
-                  <UploadItem key={u.id} upload={u} onRefresh={load} />
+                  <UploadItem key={u.id} upload={u} onReview={() => setSelectedUpload(u)} />
                 ))}
               </div>
             )}
@@ -545,6 +460,14 @@ export function AdminStudentDetailPage() {
             )}
           </div>
         </div>
+      )}
+
+      {selectedUpload && (
+        <DocumentReviewModal
+          upload={selectedUpload}
+          onClose={() => setSelectedUpload(null)}
+          onRefresh={load}
+        />
       )}
     </AdminLayout>
   )

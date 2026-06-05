@@ -1,6 +1,6 @@
 from sqlalchemy import (
     Column, Integer, String, Boolean, DateTime, Text, ForeignKey,
-    Date, UniqueConstraint
+    Date, UniqueConstraint, Float
 )
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -193,6 +193,9 @@ class FactDocumentUpload(Base):
     file_path = Column(String(500))
     original_filename = Column(String(300))
     attempt_number = Column(Integer)
+    folio = Column(String(50))
+    confidence_score = Column(Float)
+    validation_observations = Column(Text)
     uploaded_at = Column(DateTime, default=func.now())
     student = relationship("OpsStudent")
     document_type = relationship("DimDocumentType")

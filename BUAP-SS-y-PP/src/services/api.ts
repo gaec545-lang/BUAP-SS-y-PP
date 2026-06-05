@@ -2,13 +2,19 @@ import { FRONTEND_PROCESS_MAP } from '../data/processes'
 
 const BASE = 'https://app-buap-backend.azurewebsites.net/api'
 
-// Token management — stored in localStorage
-let _token: string | null = localStorage.getItem('buap_token')
+// Token management — stored in sessionStorage to mitigate XSS persistence
+// Migrate legacy localStorage token if it exists
+if (localStorage.getItem('buap_token')) {
+  sessionStorage.setItem('buap_token', localStorage.getItem('buap_token')!)
+  localStorage.removeItem('buap_token')
+}
+
+let _token: string | null = sessionStorage.getItem('buap_token')
 
 export function setToken(t: string | null) {
   _token = t
-  if (t) localStorage.setItem('buap_token', t)
-  else localStorage.removeItem('buap_token')
+  if (t) sessionStorage.setItem('buap_token', t)
+  else sessionStorage.removeItem('buap_token')
 }
 
 export function getToken(): string | null {
@@ -247,13 +253,19 @@ export async function getProcessSteps(processCode: string): Promise<{
   let result: any = null
   try {
     result = await request(`/student/process/${processCode}/steps`)
-  } catch (err) {
-    // Si el backend no tiene este proceso (ej. exencion), creamos un estado base temporal
-    result = {
-      process: { name: processCode, code: processCode, total_steps: 0 },
-      current_step: 1,
-      status: 'active',
-      steps: []
+  } catch (err: any) {
+    // Si el backend no tiene este proceso (ej. exencion), devuelve 404.
+    // Solo enmascaramos el error 404 para crear un estado base temporal.
+    if (err.status === 404) {
+      result = {
+        process: { name: processCode, code: processCode, total_steps: 0 },
+        current_step: 1,
+        status: 'active',
+        steps: []
+      }
+    } else {
+      // Lanzamos otros errores (ej. 500, red) para que la UI los maneje y muestre correctamente.
+      throw err
     }
   }
 
@@ -435,6 +447,15 @@ export async function openUploadFile(uploadId: number): Promise<void> {
   const blob = await res.blob()
   const url = URL.createObjectURL(blob)
   window.open(url, '_blank')
+}
+
+export async function getUploadBlobUrl(uploadId: number): Promise<string> {
+  const headers: Record<string, string> = {}
+  if (_token) headers['Authorization'] = `Bearer ${_token}`
+  const res = await fetch(`${BASE}/uploads/${uploadId}/file`, { headers })
+  await checkStatus(res)
+  const blob = await res.blob()
+  return URL.createObjectURL(blob)
 }
 
 export async function adminGetPendingEnrollments(): Promise<any[]> {

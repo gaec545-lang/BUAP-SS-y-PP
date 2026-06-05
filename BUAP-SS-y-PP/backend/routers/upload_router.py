@@ -6,6 +6,7 @@ from datetime import datetime
 from database import get_db, log_action
 import models
 from dependencies import get_current_student, get_current_admin
+from services.document_validator import evaluate_document_content
 
 router = APIRouter(prefix="/api/uploads", tags=["uploads"])
 
@@ -24,6 +25,7 @@ async def submit_upload(
     document_type_code: str = Form(...),
     process_code: str = Form(...),
     step_number: int = Form(...),
+    folio: str = Form(None),
     student: models.OpsStudent = Depends(get_current_student),
     db: Session = Depends(get_db),
 ):
@@ -53,6 +55,9 @@ async def submit_upload(
     with open(file_path, "wb") as f:
         f.write(content)
 
+    # Ejecutar validación
+    val_result = evaluate_document_content(file_path, student, document_type_code)
+
     upload = models.FactDocumentUpload(
         student_id=student.id,
         document_type_id=doc_type.id,
@@ -61,6 +66,9 @@ async def submit_upload(
         file_path=file_path,
         original_filename=file.filename,
         attempt_number=attempt,
+        folio=folio,
+        confidence_score=val_result["confidence_score"],
+        validation_observations="\n".join(val_result["observations"])
     )
     db.add(upload)
     db.flush()
@@ -176,6 +184,9 @@ def get_pending_uploads(
             "step_number": upload.step_number,
             "attempt_number": upload.attempt_number,
             "original_filename": upload.original_filename,
+            "folio": upload.folio,
+            "confidence_score": upload.confidence_score,
+            "validation_observations": upload.validation_observations,
             "uploaded_at": upload.uploaded_at.isoformat() if upload.uploaded_at else None,
         })
     return result
@@ -207,6 +218,9 @@ def get_student_uploads_admin(
                 "upload_id": u.id,
                 "attempt": u.attempt_number,
                 "filename": u.original_filename,
+                "folio": u.folio,
+                "confidence_score": u.confidence_score,
+                "validation_observations": u.validation_observations,
                 "uploaded_at": u.uploaded_at.isoformat() if u.uploaded_at else None,
                 "action": approval.action if approval else "pending_review",
                 "reason": approval.reason if approval else None,
