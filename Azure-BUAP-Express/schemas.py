@@ -227,6 +227,8 @@ class ValidationRunOut(BaseModel):
     override_result: Optional[str] = None
     override_reason: Optional[str] = None
     extraction_method: Optional[str] = None
+    overall_confidence: Optional[float] = None
+    read_status: Optional[str] = None
     checks: List[ValidationCheckOut] = []
     model_config = {"from_attributes": True}
 

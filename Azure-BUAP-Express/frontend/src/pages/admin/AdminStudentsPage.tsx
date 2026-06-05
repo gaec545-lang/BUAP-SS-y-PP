@@ -53,6 +53,7 @@ export function AdminStudentsPage() {
   const [search, setSearch] = useState('')
   const [modalityFilter, setModalityFilter] = useState('')
   const [serviceFilter, setServiceFilter] = useState('')
+  const [folioFilter, setFolioFilter] = useState('')
 
   async function load() {
     setLoading(true)
@@ -62,7 +63,8 @@ export function AdminStudentsPage() {
         search: search || undefined,
         modality_code: modalityFilter || undefined,
         service_type: serviceFilter || undefined,
-      })
+        folio: folioFilter || undefined,
+      } as any) // Assuming we need to pass folio
       setStudents(data)
     } catch (err: any) {
       setError(err.message ?? 'Error al cargar alumnos')
@@ -112,6 +114,16 @@ export function AdminStudentsPage() {
                        transition-all text-content-primary placeholder:text-content-tertiary"
           />
         </div>
+        
+        <input
+          value={folioFilter}
+          onChange={(e) => setFolioFilter(e.target.value)}
+          placeholder="Buscar por folio..."
+          className="w-32 px-3 py-2 text-sm rounded-input border border-surface-border
+                     focus:outline-none focus:ring-2 focus:ring-primary-300 focus:border-primary-400
+                     transition-all text-content-primary placeholder:text-content-tertiary"
+        />
+
         <select
           value={modalityFilter}
           onChange={(e) => setModalityFilter(e.target.value)}
@@ -240,3 +252,4 @@ export function AdminStudentsPage() {
     </AdminLayout>
   )
 }
+

@@ -4,6 +4,10 @@ from datetime import datetime
 from database import get_db, log_action
 import models
 from auth import verify_password, create_token, hash_password
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+
+limiter = Limiter(key_func=get_remote_address)
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -107,6 +111,7 @@ def register_student(req: dict, request: Request, db: Session = Depends(get_db))
 
 
 @router.post("/student-login")
+@limiter.limit("50/minute")
 def student_login(req: dict, request: Request, db: Session = Depends(get_db)):
     email_input = req.get("email", "").strip().lower()
     if not email_input:
@@ -161,6 +166,7 @@ def student_login(req: dict, request: Request, db: Session = Depends(get_db)):
 
 
 @router.post("/admin-login")
+@limiter.limit("50/minute")
 def admin_login(req: dict, request: Request, db: Session = Depends(get_db)):
     username = req.get("username", "").strip()
     password = req.get("password", "")

@@ -73,6 +73,8 @@ def validate_document(
             overall_result="manual_review",
             raw_extracted_text=raw_text,
             extraction_method=extraction_method,
+            overall_confidence=0.0,
+            read_status="manual_review",
         )
         checks.append(_make_check("extraccion_texto", "fail", detail="Texto extraído insuficiente — PDF posiblemente ilegible"))
         run.checks = checks
@@ -268,6 +270,10 @@ def validate_document(
         overall_result = "pass"
 
     # ─── 6. Guardar en BD ─────────────────────────────────────────────────────
+    # Calculate overall confidence
+    confidences = [c.confidence for c in checks if c.confidence is not None]
+    avg_conf = sum(confidences) / len(confidences) if confidences else 1.0
+
     run = models.FactValidationRun(
         upload_id=upload_id,
         student_id=resolved_student.id if resolved_student else student_id_hint,
@@ -279,6 +285,8 @@ def validate_document(
         overall_result=overall_result,
         raw_extracted_text=raw_text[:5000] if raw_text else None,  # Limitar tamaño
         extraction_method=extraction_method,
+        overall_confidence=avg_conf,
+        read_status="read_ok" if overall_result != "manual_review" else "manual_review",
     )
     run.checks = checks
 

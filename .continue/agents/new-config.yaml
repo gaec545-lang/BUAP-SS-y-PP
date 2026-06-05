@@ -1,0 +1,17 @@
+models:
+  - title: Gemma 4 E4B (LM Studio)
+    provider: openai
+    model: google-gemma-4-e4b-it
+    baseUrl: http://127.0.0.1:1234
+    apiKey: lm-studio
+
+tabAutocompleteModel:
+  title: Gemma 4 Autocomplete
+  provider: openai
+  model: google-gemma-4-e4b-it
+  baseUrl: http://127.0.0.1:1234
+  apiKey: lm-studio
+
+contextProviders:
+  - name: codebase
+  - name: folder

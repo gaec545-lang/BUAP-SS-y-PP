@@ -39,13 +39,6 @@ export function ProgramSelector() {
   const { setEnrollmentStatus, enrollmentStatus } = useStudent()
   const navigate = useNavigate()
 
-  // Guard: si el portal está bloqueado, redirigir al inicio
-  const isBlocked = enrollmentStatus?.status === 'blocked'
-  if (isBlocked) {
-    navigate('/student', { replace: true })
-    return null
-  }
-
   const [step, setStep] = useState<1 | 2>(1)
   const [serviceType, setServiceType] = useState<ServiceType | null>(null)
   const [folio, setFolio] = useState('')
@@ -56,6 +49,13 @@ export function ProgramSelector() {
   const [confirmError, setConfirmError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
 
+  // Guard: si el portal está bloqueado, redirigir al inicio
+  const isBlocked = enrollmentStatus?.status === 'blocked'
+  if (isBlocked) {
+    navigate('/student', { replace: true })
+    return null
+  }
+
   async function handleSearch(e: React.FormEvent) {
     e.preventDefault()
     if (!folio.trim()) return
@@ -65,11 +65,12 @@ export function ProgramSelector() {
     try {
       const program: ProgramResult = await getProgramByFolio(folio.trim())
       setFoundProgram(program)
-    } catch (err: any) {
-      if (err.status === 409) {
+    } catch (err) {
+      const error = err as { status?: number; message?: string };
+      if (error.status === 409) {
         setSearchError('Este programa ya completó su cupo.')
       } else {
-        setSearchError(err.message ?? 'Este folio no se encontró. Verifica el número e intenta de nuevo.')
+        setSearchError(error.message ?? 'Este folio no se encontró. Verifica el número e intenta de nuevo.')
       }
     } finally {
       setSearchLoading(false)
@@ -87,13 +88,14 @@ export function ProgramSelector() {
       }
       setSuccess(true)
       setTimeout(() => navigate('/student'), 1800)
-    } catch (err: any) {
-      if (err.status === 409) {
+    } catch (err) {
+      const error = err as { status?: number; message?: string };
+      if (error.status === 409) {
         setConfirmError('Este programa ya completó su cupo.')
-      } else if (err.message?.toLowerCase().includes('carrera')) {
+      } else if (error.message?.toLowerCase().includes('carrera')) {
         setConfirmError('Este programa no está disponible para tu carrera.')
       } else {
-        setConfirmError(err.message ?? 'Error al confirmar inscripción.')
+        setConfirmError(error.message ?? 'Error al confirmar inscripción.')
       }
     } finally {
       setConfirmLoading(false)

@@ -12,13 +12,19 @@ export const api = axios.create({
   }
 });
 
-// Token management — stored in localStorage
-let _token: string | null = localStorage.getItem('buap_token')
+// Token management — stored in sessionStorage to mitigate XSS persistence
+// Migrate legacy localStorage token if it exists
+if (localStorage.getItem('buap_token')) {
+  sessionStorage.setItem('buap_token', localStorage.getItem('buap_token')!)
+  localStorage.removeItem('buap_token')
+}
+
+let _token: string | null = sessionStorage.getItem('buap_token')
 
 export function setToken(t: string | null) {
   _token = t
-  if (t) localStorage.setItem('buap_token', t)
-  else localStorage.removeItem('buap_token')
+  if (t) sessionStorage.setItem('buap_token', t)
+  else sessionStorage.removeItem('buap_token')
 }
 
 export function getToken(): string | null {
@@ -43,7 +49,10 @@ api.interceptors.response.use(
       return Promise.reject(new Error('Sesión expirada. Por favor, inicia sesión de nuevo.'))
     }
     const detail = error.response?.data?.detail || error.message || 'Error en la solicitud'
-    return Promise.reject(new Error(typeof detail === 'string' ? detail : 'Error en la solicitud'))
+    const err = new Error(typeof detail === 'string' ? detail : 'Error en la solicitud') as any
+    err.status = error.response?.status
+    err.response = error.response
+    return Promise.reject(err)
   }
 )
 
@@ -271,13 +280,19 @@ export async function getProcessSteps(processCode: string): Promise<{
   let result: any = null
   try {
     result = await request(`student/process/${processCode}/steps`)
-  } catch (err) {
-    // Si el backend no tiene este proceso (ej. exencion), creamos un estado base temporal
-    result = {
-      process: { name: processCode, code: processCode, total_steps: 0 },
-      current_step: 1,
-      status: 'active',
-      steps: []
+  } catch (err: any) {
+    // Si el backend no tiene este proceso (ej. exencion), devuelve 404.
+    // Solo enmascaramos el error 404 para crear un estado base temporal.
+    if (err.status === 404) {
+      result = {
+        process: { name: processCode, code: processCode, total_steps: 0 },
+        current_step: 1,
+        status: 'active',
+        steps: []
+      }
+    } else {
+      // Lanzamos otros errores (ej. 500, red) para que la UI los maneje y muestre correctamente.
+      throw err
     }
   }
 
@@ -397,6 +412,11 @@ export async function getMyUploads(): Promise<any[]> {
   return request('uploads/my-uploads')
 }
 
+export async function getMyFiles(): Promise<any[]> {
+  return request('uploads/my-files')
+}
+
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Admin
 // ─────────────────────────────────────────────────────────────────────────────
@@ -438,8 +458,31 @@ export async function adminAdvanceStep(
 }
 
 export async function adminGetPendingUploads(): Promise<any[]> {
-  return request('uploads/pending')
+  const data = await request<any[]>('uploads/pending')
+  return (data || []).map((item: any) => ({
+    id: item.upload_id,
+    student_id: item.student?.id ?? 0,
+    student_name: item.student?.full_name ?? 'Alumno',
+    student_matricula: item.student?.matricula ?? '',
+    step_number: item.step_number,
+    document_type: typeof item.document_type === 'object'
+      ? (item.document_type?.name ?? item.document_type?.code ?? 'Documento')
+      : (item.document_type ?? 'Documento'),
+    original_filename: item.original_filename,
+    attempt_number: item.attempt_number,
+    uploaded_at: item.uploaded_at,
+    status: item.status ?? 'pending',
+    folio: item.folio,
+    // Keep raw properties in case they are referenced
+    upload_id: item.upload_id,
+    student: item.student,
+  }))
 }
+
+export async function adminGetStudentUploads(studentId: number): Promise<any[]> {
+  return request(`uploads/student/${studentId}`)
+}
+
 
 export async function adminApproveUpload(uploadId: number): Promise<any> {
   return request(`uploads/${uploadId}/approve`, { method: 'POST' })
@@ -459,6 +502,13 @@ export async function openUploadFile(uploadId: number): Promise<void> {
   const blob = res.data
   const url = URL.createObjectURL(blob)
   window.open(url, '_blank')
+}
+
+export async function getUploadBlobUrl(uploadId: number): Promise<string> {
+  const res = await api.get(`uploads/${uploadId}/file`, {
+    responseType: 'blob'
+  })
+  return URL.createObjectURL(res.data)
 }
 
 export async function adminGetPendingEnrollments(): Promise<any[]> {
@@ -745,7 +795,7 @@ export async function validateDocument(file: File, studentId?: number): Promise<
   return res.data
 }
 
-export async function validateUnifiedDocuments(files: Record<string, File | null>, studentId?: number): Promise<any> {
+export async function validateUnifiedDocuments(files: Record<string, File | null>, studentId?: number, folio?: string): Promise<any> {
   const formData = new FormData()
   
   Object.entries(files).forEach(([key, file]) => {
@@ -758,9 +808,14 @@ export async function validateUnifiedDocuments(files: Record<string, File | null
     formData.append('student_id', studentId.toString())
   }
   
-  const res = await api.post('validate/unified', formData, {
+  if (folio) {
+    formData.append('folio', folio)
+  }
+  
+  const res = await api.post('validate/upload-batch', formData, {
     headers: { 'Content-Type': 'multipart/form-data' }
   })
   return res.data
 }
+
 

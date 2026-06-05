@@ -53,6 +53,7 @@ interface PendingUpload {
   original_filename: string
   attempt_number: number
   uploaded_at: string
+  folio?: string | null
 }
 
 interface UploadItemProps {
@@ -116,9 +117,14 @@ function UploadItem({ upload, onApproved, onRejected }: UploadItemProps) {
 
         {/* Info */}
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1">
+          <div className="flex items-center gap-2 mb-1 flex-wrap">
             <p className="text-sm font-medium text-content-primary">{upload.student_name}</p>
             <span className="text-xs font-mono text-content-tertiary">{upload.student_matricula}</span>
+            {upload.folio && (
+              <span className="text-[10px] font-mono text-content-secondary bg-surface-hover px-1.5 py-0.5 rounded border border-surface-border">
+                Folio: {upload.folio}
+              </span>
+            )}
           </div>
           <p className="text-xs text-content-secondary mb-1">
             <span className="font-medium">Paso {upload.step_number}</span>

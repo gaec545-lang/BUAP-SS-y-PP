@@ -198,6 +198,10 @@ class FactDocumentUpload(Base):
     original_filename = Column(String(300))
     attempt_number = Column(Integer)
     uploaded_at = Column(DateTime, default=func.now())
+    folio = Column(String(100), nullable=True)
+    confidence_score = Column(Float, nullable=True)
+    validation_observations = Column(Text, nullable=True)
+    admin_rejection_message = Column(Text, nullable=True)
     student = relationship("OpsStudent")
     document_type = relationship("DimDocumentType")
 
@@ -417,6 +421,8 @@ class FactValidationRun(Base):
     notes = Column(Text, nullable=True)
     raw_extracted_text = Column(Text, nullable=True)
     extraction_method = Column(String(20), nullable=True)  # text_layer|ocr|hybrid
+    overall_confidence = Column(Float, nullable=True)
+    read_status = Column(String(50), nullable=True)
 
     checks = relationship("FactValidationCheck", back_populates="run", cascade="all, delete-orphan")
     validator = relationship("OpsValidatorUser")

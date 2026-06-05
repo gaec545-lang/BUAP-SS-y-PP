@@ -6,6 +6,7 @@ from datetime import datetime
 from database import get_db, log_action
 import models
 from dependencies import get_current_student, get_current_admin
+from services.document_validator import evaluate_document_content
 
 router = APIRouter(prefix="/api/uploads", tags=["uploads"])
 
@@ -24,6 +25,7 @@ async def submit_upload(
     document_type_code: str = Form(...),
     process_code: str = Form(...),
     step_number: int = Form(...),
+    folio: str = Form(None),
     student: models.OpsStudent = Depends(get_current_student),
     db: Session = Depends(get_db),
 ):
@@ -34,6 +36,12 @@ async def submit_upload(
     content = await file.read()
     if len(content) > MAX_SIZE_MB * 1024 * 1024:
         raise HTTPException(status_code=400, detail=f"El archivo supera los {MAX_SIZE_MB}MB permitidos.")
+
+    if ext == ".pdf":
+        import fitz
+        doc = fitz.open(stream=content, filetype="pdf")
+        content = doc.tobytes(garbage=4, deflate=True)
+        doc.close()
 
     doc_type = db.query(models.DimDocumentType).filter_by(code=document_type_code).first()
     if not doc_type:
@@ -53,6 +61,8 @@ async def submit_upload(
     with open(file_path, "wb") as f:
         f.write(content)
 
+    val_result = evaluate_document_content(file_path, student, document_type_code)
+
     upload = models.FactDocumentUpload(
         student_id=student.id,
         document_type_id=doc_type.id,
@@ -61,6 +71,9 @@ async def submit_upload(
         file_path=file_path,
         original_filename=file.filename,
         attempt_number=attempt,
+        folio=folio,
+        confidence_score=val_result["confidence_score"],
+        validation_observations="\n".join(val_result["observations"]),
     )
     db.add(upload)
     db.flush()
@@ -145,6 +158,67 @@ def get_upload_history(
     return result
 
 
+@router.get("/my-files")
+def get_my_files(
+    student: models.OpsStudent = Depends(get_current_student),
+    db: Session = Depends(get_db),
+):
+    uploads = db.query(models.FactDocumentUpload).filter_by(
+        student_id=student.id
+    ).order_by(models.FactDocumentUpload.uploaded_at.desc()).all()
+    
+    result = []
+    for u in uploads:
+        doc_type = db.query(models.DimDocumentType).filter_by(id=u.document_type_id).first()
+        
+        # Get approval action status
+        approval = db.query(models.FactApprovalAction).filter_by(
+            entity_type="document_upload", entity_id=u.id
+        ).order_by(models.FactApprovalAction.performed_at.desc()).first()
+        
+        status = "pending"
+        rejection_reason = None
+        if approval:
+            if approval.action == "approved":
+                status = "approved"
+            elif approval.action == "rejected":
+                status = "rejected"
+                rejection_reason = approval.reason
+                
+        # Get validation run logs
+        val_run = db.query(models.FactValidationRun).filter_by(
+            upload_id=u.id
+        ).order_by(models.FactValidationRun.validated_at.desc()).first()
+        
+        logs_str = None
+        manual_review = False
+        if val_run:
+            checks_summary = []
+            for c in val_run.checks:
+                checks_summary.append(f"{c.check_name}: {c.result}")
+            logs_str = ", ".join(checks_summary)
+            if val_run.overall_result in ("manual_review", "fail", "warning"):
+                manual_review = True
+        elif u.read_status == "manual_review":
+            manual_review = True
+
+        result.append({
+            "id": u.id,
+            "document_type_code": doc_type.code if doc_type else None,
+            "document_type_name": doc_type.name if doc_type else None,
+            "status": status,
+            "attempt_number": u.attempt_number,
+            "confidence_score": int(u.confidence * 100) if u.confidence is not None else None,
+            "manual_review": manual_review,
+            "logs": logs_str,
+            "folio": u.folio,
+            "rejection_reason": rejection_reason,
+            "created_at": u.uploaded_at.isoformat() if u.uploaded_at else None,
+        })
+    return result
+
+
+
 # ── Admin ─────────────────────────────────────────────────────
 
 @router.get("/pending")
@@ -177,6 +251,10 @@ def get_pending_uploads(
             "attempt_number": upload.attempt_number,
             "original_filename": upload.original_filename,
             "uploaded_at": upload.uploaded_at.isoformat() if upload.uploaded_at else None,
+            "status": "pending",
+            "folio": upload.folio,
+            "confidence_score": upload.confidence_score,
+            "validation_observations": upload.validation_observations,
         })
     return result
 
@@ -207,6 +285,9 @@ def get_student_uploads_admin(
                 "upload_id": u.id,
                 "attempt": u.attempt_number,
                 "filename": u.original_filename,
+                "folio": u.folio,
+                "confidence_score": u.confidence_score,
+                "validation_observations": u.validation_observations,
                 "uploaded_at": u.uploaded_at.isoformat() if u.uploaded_at else None,
                 "action": approval.action if approval else "pending_review",
                 "reason": approval.reason if approval else None,
@@ -231,15 +312,35 @@ def get_upload_file(
     upload = db.query(models.FactDocumentUpload).filter_by(id=upload_id).first()
     if not upload:
         raise HTTPException(status_code=404, detail="Upload no encontrado.")
-    if not os.path.exists(upload.file_path):
-        raise HTTPException(status_code=404, detail="Archivo no encontrado en disco.")
+    
+    file_path = upload.file_path
+    if not file_path:
+        raise HTTPException(status_code=404, detail="Ruta de archivo vacía en base de datos.")
 
-    ext = os.path.splitext(upload.file_path)[1].lower()
+    # Convert relative paths or lookups
+    if not os.path.isabs(file_path):
+        # Resolve it relative to UPLOAD_DIR's parent (since upload.file_path was saved as "uploads/filename")
+        file_path = os.path.abspath(os.path.join(UPLOAD_DIR, "..", file_path))
+
+    # Fallback to checking the UPLOAD_DIR directory directly with just the filename
+    if not os.path.exists(file_path):
+        filename = os.path.basename(upload.file_path)
+        fallback_path = os.path.join(UPLOAD_DIR, filename)
+        if os.path.exists(fallback_path):
+            file_path = fallback_path
+
+    if not os.path.exists(file_path):
+        raise HTTPException(
+            status_code=404, 
+            detail=f"Archivo no encontrado en disco. Buscado en: {file_path}"
+        )
+
+    ext = os.path.splitext(file_path)[1].lower()
     media_types = {".pdf": "application/pdf", ".jpg": "image/jpeg",
                    ".jpeg": "image/jpeg", ".png": "image/png"}
     media_type = media_types.get(ext, "application/octet-stream")
     return FileResponse(
-        path=upload.file_path, media_type=media_type,
+        path=file_path, media_type=media_type,
         filename=upload.original_filename or f"upload-{upload_id}{ext}",
     )
 
@@ -328,6 +429,8 @@ def reject_upload(
     upload = db.query(models.FactDocumentUpload).filter_by(id=upload_id).first()
     if not upload:
         raise HTTPException(status_code=404, detail="Upload no encontrado.")
+
+    upload.admin_rejection_message = reason
 
     db.add(models.FactApprovalAction(
         entity_type="document_upload", entity_id=upload_id,

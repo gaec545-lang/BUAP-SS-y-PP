@@ -3,7 +3,9 @@ from jose import JWTError, jwt
 from passlib.context import CryptContext
 from typing import Optional
 
-SECRET_KEY = "buap-ss-pp-secret-key-change-in-production-2026"
+import os
+
+SECRET_KEY = os.getenv("SECRET_KEY", "buap-ss-pp-secret-key-change-in-production-2026")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_HOURS = 24
 
