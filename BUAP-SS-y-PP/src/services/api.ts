@@ -1,6 +1,6 @@
 import { FRONTEND_PROCESS_MAP } from '../data/processes'
 
-const BASE = 'https://app-buap-backend.azurewebsites.net/api'
+const BASE = 'https://app-buap-backend-axgrbkabgsh2h6g8.mexicocentral-01.azurewebsites.net/api'
 
 // Token management — stored in sessionStorage to mitigate XSS persistence
 // Migrate legacy localStorage token if it exists
