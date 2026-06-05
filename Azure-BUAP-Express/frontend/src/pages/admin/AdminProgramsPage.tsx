@@ -542,15 +542,15 @@ export function AdminProgramsPage() {
               </p>
             </div>
           ) : (
-            <div className="overflow-x-auto border-t border-surface-border">
+            <div className="overflow-x-auto border-t border-surface-border max-h-[700px] overflow-y-auto">
               <table 
                 className="text-left text-sm"
                 style={{ width: '100%', minWidth: totalWidth, tableLayout: 'fixed' }}
               >
-                <thead className="bg-surface text-content-secondary border-b border-surface-border select-none">
-                  <tr>
+                <thead className="bg-surface text-content-secondary border-b border-surface-border select-none sticky top-0 z-20 shadow-sm">
+                  <tr className="bg-surface">
                     <th 
-                      className="px-6 py-3 font-medium relative select-none"
+                      className="px-6 py-3 font-medium relative select-none bg-surface"
                       style={{ width: columnWidths.folio, minWidth: columnWidths.folio }}
                     >
                       <div className="flex items-center">Folio</div>
@@ -563,7 +563,7 @@ export function AdminProgramsPage() {
                       </div>
                     </th>
                     <th 
-                      className="px-6 py-3 font-medium relative select-none"
+                      className="px-6 py-3 font-medium relative select-none bg-surface"
                       style={{ width: columnWidths.name, minWidth: columnWidths.name }}
                     >
                       <div className="flex items-center">Programa</div>
@@ -576,7 +576,7 @@ export function AdminProgramsPage() {
                       </div>
                     </th>
                     <th 
-                      className="px-6 py-3 font-medium relative select-none"
+                      className="px-6 py-3 font-medium relative select-none bg-surface"
                       style={{ width: columnWidths.career, minWidth: columnWidths.career }}
                     >
                       <div className="flex items-center">Carrera</div>
@@ -589,7 +589,7 @@ export function AdminProgramsPage() {
                       </div>
                     </th>
                     <th 
-                      className="px-6 py-3 font-medium relative select-none"
+                      className="px-6 py-3 font-medium relative select-none bg-surface"
                       style={{ width: columnWidths.responsible, minWidth: columnWidths.responsible }}
                     >
                       <div className="flex items-center">Responsable</div>
@@ -602,7 +602,7 @@ export function AdminProgramsPage() {
                       </div>
                     </th>
                     <th 
-                      className="px-6 py-3 font-medium relative select-none"
+                      className="px-6 py-3 font-medium relative select-none bg-surface"
                       style={{ width: columnWidths.slots, minWidth: columnWidths.slots }}
                     >
                       <div className="flex items-center">Cupo</div>
@@ -615,7 +615,7 @@ export function AdminProgramsPage() {
                       </div>
                     </th>
                     <th 
-                      className="px-6 py-3 font-medium relative select-none"
+                      className="px-6 py-3 font-medium relative select-none bg-surface"
                       style={{ width: columnWidths.status, minWidth: columnWidths.status }}
                     >
                       <div className="flex items-center">Estado</div>

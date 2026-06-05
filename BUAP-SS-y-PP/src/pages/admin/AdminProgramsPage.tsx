@@ -324,15 +324,15 @@ export function AdminProgramsPage() {
               </p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto max-h-[700px] overflow-y-auto">
               <table className="w-full text-left text-sm">
-                <thead className="bg-surface text-content-secondary border-b border-surface-border">
-                  <tr>
-                    <th className="px-6 py-3 font-medium">Folio</th>
-                    <th className="px-6 py-3 font-medium">Programa</th>
-                    <th className="px-6 py-3 font-medium">Carrera</th>
-                    <th className="px-6 py-3 font-medium">Cupo</th>
-                    <th className="px-6 py-3 font-medium">Estado</th>
+                <thead className="bg-surface text-content-secondary border-b border-surface-border sticky top-0 z-20 shadow-sm">
+                  <tr className="bg-surface">
+                    <th className="px-6 py-3 font-medium bg-surface">Folio</th>
+                    <th className="px-6 py-3 font-medium bg-surface">Programa</th>
+                    <th className="px-6 py-3 font-medium bg-surface">Carrera</th>
+                    <th className="px-6 py-3 font-medium bg-surface">Cupo</th>
+                    <th className="px-6 py-3 font-medium bg-surface">Estado</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-surface-border">

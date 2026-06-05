@@ -17,7 +17,6 @@ import { AdminLayout, AdminPageHeader } from './AdminLayout'
 import {
   adminGetStudent,
   adminAdvanceStep,
-  adminGetPendingUploads,
   adminGetStudentMessages,
   adminSendMessageToStudent,
   adminGetStudentUploadHistory,
@@ -36,63 +35,6 @@ function StepStatusDot({ status }: { status: string }) {
       ? 'bg-primary-500 animate-pulse-soft'
       : 'bg-surface-divider'
   return <span className={`w-2 h-2 rounded-full flex-shrink-0 ${cls}`} />
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Upload item
-// ─────────────────────────────────────────────────────────────────────────────
-
-function UploadItem({
-  upload,
-  onReview,
-}: {
-  upload: any
-  onReview: () => void
-}) {
-  const statusBadge: Record<string, { label: string; cls: string }> = {
-    pending: { label: 'Pendiente', cls: 'bg-warning-light text-warning-dark' },
-    approved: { label: 'Aprobado', cls: 'bg-success-light text-success-dark' },
-    rejected: { label: 'Rechazado', cls: 'bg-danger-light text-danger-dark' },
-  }
-  const badge = statusBadge[upload.status] ?? statusBadge.pending
-
-  return (
-    <div className="flex flex-col gap-2 p-3 rounded-lg border border-surface-border bg-white hover:bg-surface/50 transition-colors cursor-pointer" onClick={onReview}>
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium text-content-primary truncate">
-            {upload.document_type_name ?? upload.document_type ?? 'Documento'}
-          </p>
-          <div className="flex gap-2 items-center mt-1">
-            <p className="text-xs text-content-secondary">
-              Intento {upload.attempt ?? upload.attempt_number ?? 1}
-            </p>
-            {upload.folio && (
-              <span className="text-[10px] bg-surface-divider px-1.5 rounded text-content-tertiary">
-                Folio: {upload.folio}
-              </span>
-            )}
-          </div>
-        </div>
-        <span className={`inline-flex items-center px-2 py-0.5 rounded-badge text-xs font-medium ${badge.cls}`}>
-          {badge.label}
-        </span>
-      </div>
-
-      {upload.status === 'pending' && (
-        <div className="mt-1">
-          <button
-            type="button"
-            onClick={(e) => { e.stopPropagation(); onReview() }}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-primary-50 text-primary-700 font-medium rounded-button hover:bg-primary-100 transition-colors duration-150 w-full justify-center"
-          >
-            <Eye size={12} />
-            Revisar Documento
-          </button>
-        </div>
-      )}
-    </div>
-  )
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -193,7 +135,6 @@ export function AdminStudentDetailPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [advLoading, setAdvLoading] = useState<string | null>(null)
-  const [studentUploads, setStudentUploads] = useState<any[]>([])
   const [selectedUpload, setSelectedUpload] = useState<any>(null)
   const [uploadsHistory, setUploadsHistory] = useState<any[]>([])
   const [folioFilter, setFolioFilter] = useState('')
@@ -203,17 +144,11 @@ export function AdminStudentDetailPage() {
     setLoading(true)
     setError(null)
     try {
-      const [studentData, allUploads, historyData] = await Promise.all([
+      const [studentData, historyData] = await Promise.all([
         adminGetStudent(Number(id)),
-        adminGetPendingUploads().catch(() => []),
         adminGetStudentUploadHistory(Number(id)).catch(() => []),
       ])
       setData(studentData)
-      // Filter uploads for this student
-      const filtered = allUploads.filter(
-        (u: any) => u.student_id === Number(id) || u.student?.id === Number(id),
-      )
-      setStudentUploads(filtered)
       setUploadsHistory(historyData)
     } catch (err: any) {
       setError(err.message ?? 'Error al cargar datos')
@@ -241,6 +176,14 @@ export function AdminStudentDetailPage() {
   const processes: any[] = data?.processes ?? []
   const enrollment = data?.enrollment_status ?? null
   const activeProcess = processes.find((p) => p.status === 'active') ?? processes[0]
+
+  const uniqueFolios = Array.from(
+    new Set(
+      uploadsHistory
+        .map((u) => u.folio)
+        .filter((f): f is string => typeof f === 'string' && f.trim() !== '')
+    )
+  ).sort()
 
   return (
     <AdminLayout>
@@ -342,18 +285,6 @@ export function AdminStudentDetailPage() {
                     </>
                   )}
                 </div>
-              </div>
-            )}
-
-            {/* Uploads for this student */}
-            {studentUploads.length > 0 && (
-              <div className="space-y-2">
-                <h3 className="text-xs font-medium text-content-tertiary uppercase tracking-wider">
-                  Documentos pendientes
-                </h3>
-                {studentUploads.map((u) => (
-                  <UploadItem key={u.id} upload={u} onReview={() => setSelectedUpload(u)} />
-                ))}
               </div>
             )}
 
@@ -469,18 +400,23 @@ export function AdminStudentDetailPage() {
                   </p>
                 </div>
                 <div className="w-full sm:w-64">
-                  <input
-                    type="text"
-                    placeholder="Filtrar por folio..."
+                  <select
                     value={folioFilter}
                     onChange={(e) => setFolioFilter(e.target.value)}
                     className="w-full px-3 py-1.5 text-xs rounded-input border border-surface-border
-                               focus:outline-none focus:ring-1 focus:ring-primary-300 placeholder:text-content-tertiary"
-                  />
+                               focus:outline-none focus:ring-1 focus:ring-primary-300 bg-white"
+                  >
+                    <option value="">Todos los folios</option>
+                    {uniqueFolios.map((folio) => (
+                      <option key={folio} value={folio}>
+                        {folio}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
 
-              {uploadsHistory.filter((u) => !folioFilter || u.folio?.toLowerCase().includes(folioFilter.toLowerCase())).length === 0 ? (
+              {uploadsHistory.filter((u) => !folioFilter || u.folio === folioFilter).length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-8 text-center bg-surface/30 rounded-lg border border-dashed border-surface-border">
                   <p className="text-xs text-content-secondary">
                     {folioFilter ? 'No hay documentos que coincidan con el folio.' : 'Sin historial de documentos para este alumno.'}
@@ -502,7 +438,7 @@ export function AdminStudentDetailPage() {
                     </thead>
                     <tbody className="divide-y divide-surface-border">
                       {uploadsHistory
-                        .filter((u) => !folioFilter || u.folio?.toLowerCase().includes(folioFilter.toLowerCase()))
+                        .filter((u) => !folioFilter || u.folio === folioFilter)
                         .map((u) => {
                           const statusBadge: Record<string, { label: string; cls: string }> = {
                             pending: { label: 'Pendiente', cls: 'bg-warning-light text-warning-dark' },
